@@ -38,9 +38,12 @@ os.makedirs(RECORDINGS, exist_ok=True)
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-me-" + uuid.uuid4().hex)
 app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500 MB (recordings)
-# in-memory signaling queues for WebRTC (per user); chat uses DB polling
-SIGNALS = collections.defaultdict(list)
+# in-memory signaling for WebRTC (per user). Messages keep a sequence number and
+# live for 2 minutes, so EVERY open tab of a user sees them (a second tab must not
+# "steal" the answer / ICE candidates meant for the chat tab).
+SIGNALS = collections.defaultdict(list)   # user -> [(seq, time, msg)]
 SIG_LOCK = threading.Lock()
+SIG_SEQ = [0]
 
 # ---------------------------------------------------------------- database ---
 SCHEMA = """
@@ -492,27 +495,29 @@ def rtc_config():
                         "username": os.environ.get("TURN_USER", ""), "credential": os.environ.get("TURN_PASS", "")})
     return jsonify(iceServers=servers)
 
-@app.route("/signal/peek")
-@login_required
-def signal_peek():
-    """Used by the site-wide call banner on non-chat pages: returns pending signals
-    for this user (same as poll)."""
-    return signal_poll()
-
 @app.route("/signal", methods=["POST"])
 @login_required
 def signal_send():
     m = request.get_json(); m["from"] = session["user"]
+    import time as _t
     with SIG_LOCK:
-        SIGNALS[m["to"]].append(m)
+        SIG_SEQ[0] += 1; m["seq"] = SIG_SEQ[0]
+        SIGNALS[m["to"]].append((SIG_SEQ[0], _t.time(), m))
     return jsonify(ok=True)
 
 @app.route("/signal/poll")
 @login_required
 def signal_poll():
+    """Return this user's signals with seq > ?since. Nothing is deleted on read;
+    entries expire after 120 s. A fresh tab (since=0) only gets the last 30 s."""
+    import time as _t
+    since = int(request.args.get("since", 0)); now_t = _t.time()
     with SIG_LOCK:
-        msgs, SIGNALS[session["user"]] = SIGNALS[session["user"]], []
-    return jsonify(msgs)
+        q = [x for x in SIGNALS[session["user"]] if now_t - x[1] < 120]
+        SIGNALS[session["user"]] = q
+        out = [m for seq, t, m in q if (now_t - t < 30) if since == 0] if since == 0 else [m for seq, t, m in q if seq > since]
+        top = q[-1][0] if q else since
+    return jsonify(msgs=out, seq=max(top, since))
 
 # ----------------------------------------------------------------- calls ----
 @app.route("/calls")

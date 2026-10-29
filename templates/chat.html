@@ -40,7 +40,7 @@ audio{width:240px;max-width:100%;margin-top:4px}
 #callpanel.audio .vids{display:none}
 #rec{display:none;color:#ff5c5c;font-weight:600}#rec.on{display:inline}@keyframes blink{50%{opacity:.3}}#rec.on::before{content:"● ";animation:blink 1s infinite}
 #incoming{display:none;background:var(--teal);color:#fff;padding:10px 14px;align-items:center;gap:10px;flex-shrink:0}#incoming.on{display:flex}
-@media(max-width:860px){ main{height:calc(100dvh - 56px - env(safe-area-inset-top))} .msg{max-width:86%} .chathead{padding:8px 10px;gap:8px;flex-wrap:wrap} .chathead .nm{font-size:14px} .chathead .st{display:none} .tools{order:5;width:100%;padding-top:6px;border-top:1px solid var(--line);margin-top:4px} .search{flex:1} .search input{width:100%} #callee{flex-shrink:0} #log{padding:12px 10px 8px} }
+@media(max-width:860px){ html,body{height:100%;overflow:hidden;overscroll-behavior:none} body{position:fixed;inset:0} .topbar{position:fixed;top:0;left:0;right:0} main{position:fixed;left:0;right:0;top:calc(56px + env(safe-area-inset-top));bottom:0;height:auto} .msg{max-width:86%} .chathead{padding:8px 10px;gap:8px;flex-wrap:wrap} .chathead .nm{font-size:14px} .chathead .st{display:none} .tools{order:5;width:100%;padding-top:6px;border-top:1px solid var(--line);margin-top:4px} .search{flex:1} .search input{width:100%} #callee{flex-shrink:0} #log{padding:12px 10px 8px} }
 </style>{% endblock %}
 {% block pagetitle %}Chat{% endblock %}
 {% block body %}
@@ -86,6 +86,8 @@ const log=$('log'),me='{{user}}',pid={{current_pid}};let peer='{{other_user}}';
 const pickPeer=()=>{const c=$('callee');if(c)peer=c.value;};
 let lastId={{ last_id }};let hasOlder={{ 'true' if has_older else 'false' }},loadingOlder=false;log.scrollTop=log.scrollHeight;
 window.addEventListener('resize',()=>{log.scrollTop=log.scrollHeight;});
+// keep the composer above the on-screen keyboard (mobile browsers resize the visual viewport, not the layout)
+if(window.visualViewport&&matchMedia('(max-width:860px)').matches){const mainEl=document.querySelector('main');const fit=()=>{const vv=window.visualViewport;mainEl.style.bottom=(window.innerHeight-vv.height-vv.offsetTop)+'px';mainEl.style.top=(vv.offsetTop+56)+'px';log.scrollTop=log.scrollHeight;};visualViewport.addEventListener('resize',fit);visualViewport.addEventListener('scroll',fit);}
 {% if q %}(()=>{const q={{q|tojson}}.toLowerCase();document.querySelectorAll('.msg .b').forEach(b=>{const t=b.textContent,i=t.toLowerCase().indexOf(q);if(i<0)return;b.innerHTML='';b.append(t.slice(0,i));const m=document.createElement('mark');m.textContent=t.slice(i,i+q.length);b.append(m,t.slice(i+q.length));});})();{% endif %}
 {% if not q %}if(log.scrollHeight<=log.clientHeight+10)loadOlder();{% endif %}
 $('body').addEventListener('focus',()=>setTimeout(()=>{log.scrollTop=log.scrollHeight;},300));
@@ -166,8 +168,9 @@ async function getMedia(k){kind=k;
 function makePc(){pc=new RTCPeerConnection(cfg);iceBuf=[];remoteSet=false;local.getTracks().forEach(t=>pc.addTrack(t,local));
  pc.onicecandidate=e=>e.candidate&&sendSignal({to:peer,type:'ice',data:e.candidate,callId});
  pc.ontrack=e=>{$('remote').srcObject=e.streams[0];$('remoteAudio').srcObject=e.streams[0];$('remoteAudio').play().catch(()=>{});if(!recorder)startRecording(e.streams[0]);};
+ pc.oniceconnectionstatechange=()=>{if(pc&&pc.connectionState!=='connected')setStatus('connecting… ('+pc.iceConnectionState+')');};
  pc.onconnectionstatechange=()=>{const st=pc.connectionState;
-  if(st==='connected'){setStatus('connected · '+kind);clearTimeout(noAnswerT);}
+  if(st==='connected'){setStatus('connected · '+kind);clearTimeout(noAnswerT);clearTimeout(connT);}
   else if(st==='failed'){setStatus('connection failed');alert('Call could not connect.\n\nBoth sides answered but the network path failed — this usually means a strict NAT / mobile data. Ask the admin to set TURN_URL / TURN_USER / TURN_PASS on the server (see TODO.md).');hangup(true);}
   else if(['disconnected','closed'].includes(st))hangup(false);else setStatus(st+'…');};}
 async function flushIce(){remoteSet=true;for(const c of iceBuf){try{await pc.addIceCandidate(c);}catch(e){}}iceBuf=[];}
@@ -194,6 +197,7 @@ async function call(k){pickPeer();if(!peer)return alert('No one else to call yet
  makePc();const offer=await pc.createOffer();await pc.setLocalDescription(offer);
  sendSignal({to:peer,type:'offer',data:offer,callId,kind,from:me});setStatus('calling '+peer+'…');ringback();
  noAnswerT=setTimeout(()=>{if(pc&&pc.connectionState!=='connected'){setStatus(peer+' did not answer');fetch(`/call/${callId}/status/missed`,{method:'POST'});sendSignal({to:peer,type:'hangup',callId});hangup(false);alert(peer+' did not answer.\n\nThey will see a missed call. (They get a ringing alert on any page of the app while it is open.)');}},50000);}
+let connT=null;function connectTimer(){clearTimeout(connT);connT=setTimeout(()=>{if(pc&&pc.connectionState!=='connected'){const st=pc.iceConnectionState;hangup(true);setStatus('could not connect');alert('Call could not connect (ICE state: '+st+').\n\nTip: close other Rainflow tabs on both phones and try again. If it keeps failing, send this ICE state to the admin.');}},30000);}
 function ringback(){const i=setInterval(()=>{if(!pc||pc.connectionState==='connected'||pc.connectionState==='closed'){clearInterval(i);return;}beep(1);},2000);}
 $('btnVideo').onclick=()=>call('video');$('btnAudio').onclick=()=>call('audio');
 function showIncoming(m){pendingOffer=m;peer=m.from;$('fromName').textContent=m.from;$('kindName').textContent=m.kind;$('incoming').classList.add('on');ring(true);
@@ -201,20 +205,25 @@ function showIncoming(m){pendingOffer=m;peer=m.from;$('fromName').textContent=m.
  clearTimeout(window.missT);window.missT=setTimeout(()=>{if($('incoming').classList.contains('on')){$('incoming').classList.remove('on');ring(false);fetch(`/call/${m.callId}/status/missed`,{method:'POST'});sendSignal({to:peer,type:'reject',callId:m.callId});}},45000);}
 async function onSignal(m){
  if(m.type==='offer'){if(pc){sendSignal({to:m.from,type:'busy',callId:m.callId});return;}showIncoming(m);}
- else if(m.type==='answer'&&pc){await pc.setRemoteDescription(m.data);await flushIce();clearTimeout(noAnswerT);}
- else if(m.type==='ice'){if(pc&&remoteSet){try{await pc.addIceCandidate(m.data);}catch(e){}}else iceBuf.push(m.data);}
+ else if(m.type==='answer'&&pc){if(m.callId&&callId&&m.callId!==callId)return;await pc.setRemoteDescription(m.data);await flushIce();clearTimeout(noAnswerT);connectTimer();}
+ else if(m.type==='ice'){if(m.callId&&callId&&m.callId!==callId)return;if(pc&&remoteSet){try{await pc.addIceCandidate(m.data);}catch(e){}}else iceBuf.push(m.data);}
  else if(m.type==='hangup'){if($('incoming').classList.contains('on')){$('incoming').classList.remove('on');ring(false);fetch(`/call/${pendingOffer.callId}/status/missed`,{method:'POST'});setStatus('missed call from '+m.from);}else{setStatus(m.from+' ended the call');}hangup(false);}
  else if(m.type==='reject'){setStatus(peer+' declined the call');clearTimeout(noAnswerT);hangup(false);}
  else if(m.type==='busy'){setStatus(peer+' is on another call');clearTimeout(noAnswerT);hangup(false);}}
-setInterval(async()=>{try{const r=await fetch('/signal/poll');for(const m of await r.json())await onSignal(m);}catch(e){}},1000);
-async function acceptCall(){$('incoming').classList.remove('on');ring(false);clearTimeout(window.missT);callId=pendingOffer.callId;
+let sigSeq=0;const handled=new Set();
+setInterval(async()=>{try{const r=await fetch('/signal/poll?since='+sigSeq);const j=await r.json();sigSeq=j.seq||sigSeq;for(const m of j.msgs){if(handled.has(m.seq))continue;handled.add(m.seq);await onSignal(m);}}catch(e){}},1000);
+// tell other tabs (dashboard banner etc.) when this tab handles a call
+function broadcast(state,cid){try{localStorage.setItem('rf_call_state',JSON.stringify({state,callId:cid,t:Date.now()}));}catch(e){}}
+window.addEventListener('storage',e=>{if(e.key!=='rf_call_state')return;try{const st=JSON.parse(e.newValue);
+ if(pendingOffer&&st.callId===pendingOffer.callId&&['answered','rejected'].includes(st.state)&&$('incoming').classList.contains('on')){$('incoming').classList.remove('on');ring(false);clearTimeout(window.missT);}}catch(x){}});
+async function acceptCall(){$('incoming').classList.remove('on');ring(false);clearTimeout(window.missT);callId=pendingOffer.callId;broadcast('answered',callId);broadcast('answered',callId);
  try{await getMedia(pendingOffer.kind);}catch(e){sendSignal({to:peer,type:'reject',callId});return;}
  fetch(`/call/${callId}/status/answered`,{method:'POST'});makePc();
  await pc.setRemoteDescription(pendingOffer.data);await flushIce();const ans=await pc.createAnswer();await pc.setLocalDescription(ans);
- sendSignal({to:peer,type:'answer',data:ans,callId});setStatus('connecting…');}
+ sendSignal({to:peer,type:'answer',data:ans,callId});setStatus('connecting…');connectTimer();}
 $('btnAccept').onclick=acceptCall;
-$('btnReject').onclick=()=>{$('incoming').classList.remove('on');ring(false);clearTimeout(window.missT);fetch(`/call/${pendingOffer.callId}/status/rejected`,{method:'POST'});sendSignal({to:peer,type:'reject',callId:pendingOffer.callId});};
-function hangup(notify=true){ring(false);clearTimeout(noAnswerT);if(notify&&pc)sendSignal({to:peer,type:'hangup',callId});
+$('btnReject').onclick=()=>{$('incoming').classList.remove('on');ring(false);clearTimeout(window.missT);broadcast('rejected',pendingOffer.callId);broadcast('rejected',pendingOffer.callId);fetch(`/call/${pendingOffer.callId}/status/rejected`,{method:'POST'});sendSignal({to:peer,type:'reject',callId:pendingOffer.callId});};
+function hangup(notify=true){ring(false);clearTimeout(noAnswerT);clearTimeout(connT);if(callId)broadcast('ended',callId);clearTimeout(connT);if(callId)broadcast('ended',callId);if(notify&&pc)sendSignal({to:peer,type:'hangup',callId});
  if(recorder&&recorder.state==='recording')recorder.stop();else{$('callpanel').className='';if(callId&&pc)fetch(`/call/${callId}/end`,{method:'POST'});}
  if(pc){pc.onconnectionstatechange=null;pc.close();pc=null;}if(local){local.getTracks().forEach(t=>t.stop());local=null;}}
 $('btnHang').onclick=()=>{hangup(true);setStatus('call ended');};

@@ -216,10 +216,12 @@ document.getElementById('installbtn').onclick=async()=>{if(!deferredPrompt)retur
  function ring(on){if(on&&!ringT){ringT=setInterval(()=>{beep(880);setTimeout(()=>beep(1100),250);},1500);if(navigator.vibrate)navigator.vibrate([400,200,400]);}if(!on&&ringT){clearInterval(ringT);ringT=null;}}
  const send=m=>fetch('/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(m)});
  function finish(action){ring(false);clearTimeout(window.rfT);$('rfcall').classList.remove('on');
-  if(action==='accept'){saved.action='accept';sessionStorage.setItem('rf_call',JSON.stringify(saved));location.href='/chat';}
-  else{fetch(`/call/${saved.offer.callId}/status/rejected`,{method:'POST'});send({to:saved.offer.from,type:'reject',callId:saved.offer.callId});saved=null;}}
+  if(action==='accept'){saved.action='accept';sessionStorage.setItem('rf_call',JSON.stringify(saved));try{localStorage.setItem('rf_call_state',JSON.stringify({state:'answered',callId:saved.offer.callId,t:Date.now()}));}catch(e){}location.href='/chat';}
+  else{fetch(`/call/${saved.offer.callId}/status/rejected`,{method:'POST'});send({to:saved.offer.from,type:'reject',callId:saved.offer.callId});try{localStorage.setItem('rf_call_state',JSON.stringify({state:'rejected',callId:saved.offer.callId,t:Date.now()}));}catch(e){}saved=null;}}
  $('rfacc').onclick=()=>finish('accept');$('rfrej').onclick=()=>finish('reject');
- setInterval(async()=>{try{const r=await fetch('/signal/peek');const ms=await r.json();
+ let seq=0;const done=new Set();
+ window.addEventListener('storage',e=>{if(e.key!=='rf_call_state')return;try{const st=JSON.parse(e.newValue);if(saved&&st.callId===saved.offer.callId&&['answered','rejected','ended'].includes(st.state)){ring(false);clearTimeout(window.rfT);$('rfcall').classList.remove('on');saved=null;}}catch(x){}});
+ setInterval(async()=>{try{const r=await fetch('/signal/poll?since='+seq);const j=await r.json();seq=j.seq||seq;const ms=j.msgs.filter(m=>!done.has(m.seq));ms.forEach(m=>done.add(m.seq));
   for(const m of ms){
    if(m.type==='offer'){saved={offer:m,signals:[]};$('rfwho').textContent=m.from+' is calling';$('rfkind').textContent=m.kind+' call · tap Accept to open chat';$('rfcall').classList.add('on');ring(true);
      try{if(Notification.permission==='granted'&&document.hidden)new Notification('Incoming '+m.kind+' call from '+m.from,{body:'Open Rainflow to answer'});}catch(e){}
