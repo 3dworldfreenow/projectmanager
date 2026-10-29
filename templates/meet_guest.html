@@ -1,0 +1,14 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Join meeting · Rainflow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>body{margin:0;font:15px/1.5 Inter,system-ui,sans-serif;background:#f5f7fa;color:#1c2430;display:grid;place-items:center;min-height:100vh;padding:20px;box-sizing:border-box}
+.card{background:#fff;border:1px solid #e5e9f0;border-radius:16px;padding:24px;max-width:380px;width:100%;text-align:center;box-shadow:0 10px 30px -14px rgba(28,36,48,.25)}
+.mark{width:64px;height:64px;border-radius:18px;background:linear-gradient(145deg,#4a95ee,#1f66c2);margin:0 auto 14px;display:grid;place-items:center}
+h1{font-size:20px;margin:0 0 4px}p{color:#7b8594;margin:0 0 16px}input{width:100%;box-sizing:border-box;border:1px solid #d7dde7;border-radius:10px;padding:11px 12px;font:inherit;font-size:16px}
+button{width:100%;margin-top:12px;background:#2f7de1;color:#fff;border:0;border-radius:10px;padding:12px;font:inherit;font-weight:600;font-size:15px}
+small{display:block;color:#7b8594;margin-top:12px;font-size:12.5px}</style></head><body>
+<div class="card"><div class="mark"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 3c-3 4.5-6 7.5-6 11a6 6 0 0 0 12 0c0-3.5-3-6.5-6-11z"/></svg></div>
+{% if gone %}<h1>This meeting has ended</h1><p>Ask the host for a new link.</p>
+{% else %}<h1>{{room.title}}</h1><p>Hosted by {{room.host}}. Enter your name — the host will let you in.</p>
+<form method="post" action="/meet/{{token}}/guest"><input name="name" placeholder="Your name" required autofocus maxlength="30"><button>Ask to join</button></form>
+<small>You'll be asked for camera & microphone access. The call is recorded.</small>{% endif %}
+</div></body></html>

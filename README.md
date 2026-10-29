@@ -19,6 +19,7 @@ For a software owner working with an IoT / hardware team on a weather station an
 ### Team & communication
 - **First-run setup** — creates your admin account + first teammate; no passwords in code
 - **Invite links (admin)** — create a link with a role (Guest, IoT Engineer, …), expiry and number of uses; share via WhatsApp / share sheet; the person picks their own username & password
+- **Meeting rooms (group calls)** — start from Calls / dashboard / chat, or press ➕ during a 1:1 call. Members join by link directly; **anyone else (no account) opens the link, enters a name and waits until the host admits them** (Admit / Deny banner with sound). Guests can only be in that room — nothing else in the app. Mesh WebRTC (good for up to ~5 people), every participant's view is recorded to the server and listed under Calls.
 - **In-call controls** — mute, camera off, switch front/rear camera, full screen (automatic on phones); recording stays on through all of it
 - **Team members (admin)** — add people, set roles (Project Manager, IoT Engineer, Hardware Tester, custom…), reset passwords, disable, make admin
 - **Team chat** — saved forever; in-chat search; reply/quote; pin important messages (pinned bar); @mentions (highlighted + sound); voice notes (hold 🎤); edit (previous versions visible to all); delete; unread badges

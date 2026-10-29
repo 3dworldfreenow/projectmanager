@@ -9,7 +9,8 @@
 - [ ] **Per-project access** — currently every member sees every project; add project membership so a client only sees their project.
 
 ## Calls
-- [ ] 3+ person group calls (needs an SFU / media server such as LiveKit or Janus — large job).
+- [x] Group calls (mesh, up to ~5). For 6+ people an SFU (LiveKit/Janus) would be needed.
+- [ ] Meeting rooms are kept in memory — a server restart ends active rooms (fine for now).
 - [ ] Browser push notifications + ringtone when the chat tab is **not** open (needs a service worker + VAPID keys).
 - [ ] Screen sharing during a call (getDisplayMedia — small job).
 - [ ] Server-side merge of both recordings into one file (ffmpeg).

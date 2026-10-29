@@ -19,7 +19,7 @@ Run:
   python app.py
   open http://localhost:5000   -> first visit asks you to create both accounts
 """
-import os, sqlite3, datetime, uuid
+import os, re, sqlite3, datetime, uuid
 from functools import wraps
 from flask import (Flask, g, render_template, request, redirect, url_for,
                    session, send_from_directory, flash, jsonify, abort)
@@ -176,6 +176,19 @@ def admin_required(f):
             flash("Admin only"); return redirect(url_for("dashboard"))
         return f(*a, **k)
     return login_required(w)
+
+def ident():
+    """Signaling identity: logged-in username, or 'guest:<room>:<name>' for a call guest."""
+    return session.get("user") or session.get("guest_id")
+
+def participant_required(f):
+    """Allows logged-in members and call guests (for signaling / recording only)."""
+    @wraps(f)
+    def w(*a, **k):
+        if not ident():
+            return jsonify(ok=False, error="not a participant"), 401
+        return f(*a, **k)
+    return w
 
 def login_required(f):
     @wraps(f)
@@ -537,7 +550,7 @@ def chat_poll():
 
 # ---- WebRTC signaling: server only relays offer/answer/ICE between the two peers
 @app.route("/rtc-config")
-@login_required
+@participant_required
 def rtc_config():
     """ICE servers for WebRTC. Set TURN_URL / TURN_USER / TURN_PASS in the environment
     (systemd unit) to make calls work across strict NATs and mobile data."""
@@ -548,29 +561,32 @@ def rtc_config():
     return jsonify(iceServers=servers)
 
 @app.route("/signal", methods=["POST"])
-@login_required
+@participant_required
 def signal_send():
-    m = request.get_json(); m["from"] = session["user"]
+    m = request.get_json(); m["from"] = ident()
     import time as _t
     with SIG_LOCK:
         SIG_SEQ[0] += 1; m["seq"] = SIG_SEQ[0]
         SIGNALS[m["to"]].append((SIG_SEQ[0], _t.time(), m))
     if m.get("type") == "offer":
         from pm import push
-        push([m["to"]], f"📞 Incoming {m.get('kind','video')} call", f"{session['user']} is calling you — tap to answer", "/chat", urgent=True, even_if_online=True)
+        if "user" in session and not m.get("room"):
+            push([m["to"]], f"📞 Incoming {m.get('kind','video')} call", f"{session['user']} is calling you — tap to answer", "/chat", urgent=True, even_if_online=True)
     return jsonify(ok=True)
 
 @app.route("/signal/poll")
-@login_required
+@participant_required
 def signal_poll():
     """Return this user's signals with seq > ?since. Nothing is deleted on read;
     entries expire after 120 s. A fresh tab (since=0) only gets the last 30 s."""
     import time as _t
-    from pm import touch_presence; touch_presence()
+    if "user" in session:
+        from pm import touch_presence; touch_presence()
+    me = ident()
     since = int(request.args.get("since", 0)); now_t = _t.time()
     with SIG_LOCK:
-        q = [x for x in SIGNALS[session["user"]] if now_t - x[1] < 120]
-        SIGNALS[session["user"]] = q
+        q = [x for x in SIGNALS[me] if now_t - x[1] < 120]
+        SIGNALS[me] = q
         out = [m for seq, t, m in q if (now_t - t < 30) if since == 0] if since == 0 else [m for seq, t, m in q if seq > since]
         top = q[-1][0] if q else since
     return jsonify(msgs=out, seq=max(top, since))
@@ -581,7 +597,12 @@ def signal_poll():
 def calls():
     rows = db().execute("SELECT * FROM calls WHERE project_id=? ORDER BY id DESC", (pid(),)).fetchall()
     missed_rows = [c for c in rows if c["callee"] == session["user"] and c["status"] in ("missed", "missed_seen")]
-    return render_template("calls.html", calls=rows, missed_rows=missed_rows)
+    import glob as _g
+    recs = {}
+    for c in rows:
+        files = sorted(_g.glob(os.path.join(RECORDINGS, f"call_{c['id']}_*.webm")))
+        recs[c["id"]] = [(os.path.basename(f), os.path.basename(f)[len(f"call_{c['id']}_"):-5].replace("guest_", "guest ").replace("_", " ")) for f in files if os.path.getsize(f) > 0]
+    return render_template("calls.html", calls=rows, missed_rows=missed_rows, recs=recs)
 
 @app.route("/call/start", methods=["POST"])
 @login_required
@@ -609,10 +630,10 @@ def clear_missed():
     db().commit(); return redirect(url_for("calls"))
 
 def _rec_name(cid):
-    return f"call_{cid}_{session['user']}.webm"
+    return f"call_{cid}_{secure_filename(ident().replace(':', '_').replace(' ', '_'))}.webm"
 
 @app.route("/call/<int:cid>/chunk", methods=["POST"])
-@login_required
+@participant_required
 def call_chunk(cid):
     """Server-side recording: the browser streams 2-second chunks here during the call,
     so the server keeps the recording even if a phone dies or the tab closes."""
@@ -620,12 +641,12 @@ def call_chunk(cid):
     with open(os.path.join(RECORDINGS, fn), "ab") as out:
         out.write(request.get_data())
     c = db().execute("SELECT caller FROM calls WHERE id=?", (cid,)).fetchone()
-    col = "recording" if c and c["caller"] == session["user"] else "recording2"
+    col = "recording" if c and c["caller"] == ident() else "recording2"
     db().execute(f"UPDATE calls SET {col}=? WHERE id=?", (fn, cid)); db().commit()
     return jsonify(ok=True)
 
 @app.route("/call/<int:cid>/end", methods=["POST"])
-@login_required
+@participant_required
 def call_end(cid):
     db().execute("UPDATE calls SET ended=?, status=CASE WHEN status='ringing' THEN 'missed' ELSE status END WHERE id=? AND ended IS NULL", (now(), cid)); db().commit()
     return jsonify(ok=True)
@@ -654,6 +675,131 @@ def activity():
         if not days or days[-1][0] != r["ts"][:10]: days.append((r["ts"][:10], []))
         days[-1][1].append(r)
     return render_template("activity.html", days=days, page=page, has_more=has_more, since=session.get("prev_login"))
+
+# ---------------------------------------------------------- meeting rooms ----
+# Group calls with a waiting room. Members join directly; guests (no account)
+# join by link after the host admits them. Mesh WebRTC, every participant records.
+ROOMS = {}          # token -> {"host": str, "call_id": int, "members": {ident: {...}}, "title": str}
+ROOM_LOCK = threading.Lock()
+
+def _room(token):
+    r = ROOMS.get(token)
+    if not r: abort(404)
+    return r
+
+def _is_host(r):
+    return session.get("user") and (session["user"] == r["host"] or session.get("is_admin"))
+
+@app.route("/meet/new", methods=["POST"])
+@login_required
+def meet_new():
+    token = uuid.uuid4().hex[:12]
+    title = request.form.get("title") or request.args.get("title") or f"{session['user']}'s meeting"
+    cur = db().execute("INSERT INTO calls(project_id,caller,callee,started,kind,status) VALUES(?,?,?,?,?,?)",
+                       (pid(), session["user"], "room", now(), "meeting", "answered"))
+    db().commit()
+    with ROOM_LOCK:
+        ROOMS[token] = {"host": session["user"], "call_id": cur.lastrowid, "members": {}, "title": title, "created": now()}
+    log_activity("started a meeting", title, f"/meet/{token}")
+    # tell the person we were in a 1:1 call with (if any) to move into the room
+    peer = request.form.get("peer") or request.args.get("peer")
+    if peer:
+        import time as _t
+        with SIG_LOCK:
+            SIG_SEQ[0] += 1
+            SIGNALS[peer].append((SIG_SEQ[0], _t.time(), {"type": "moveroom", "from": session["user"], "token": token, "seq": SIG_SEQ[0], "to": peer}))
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify(token=token, url=url_for("meet", token=token, _external=True))
+    return redirect(url_for("meet", token=token))
+
+@app.route("/meet/<token>")
+def meet(token):
+    r = ROOMS.get(token)
+    if not r:
+        return render_template("meet_guest.html", token=token, gone=True), 410
+    if "user" in session:
+        return render_template("meet.html", token=token, room=r, me=session["user"], is_host=bool(_is_host(r)), guest=False)
+    gid = session.get("guest_id")
+    if gid and gid.startswith(f"guest:{token}:"):
+        return render_template("meet.html", token=token, room=r, me=gid, is_host=False, guest=True,
+                               guest_name=gid.split(":", 2)[2])
+    return render_template("meet_guest.html", token=token, room=r, gone=False)
+
+@app.route("/meet/<token>/guest", methods=["POST"])
+def meet_guest(token):
+    r = _room(token)
+    name = re.sub(r"[^\w .\-]", "", request.form.get("name", "").strip())[:30].strip() or "guest"
+    session.clear(); session["guest_id"] = f"guest:{token}:{name}"
+    with ROOM_LOCK:
+        r["members"][session["guest_id"]] = {"name": name, "role": "guest", "status": "waiting", "seen": now(), "t": __import__("time").time()}
+    return redirect(url_for("meet", token=token))
+
+@app.route("/meet/<token>/join", methods=["POST"])
+@participant_required
+def meet_join(token):
+    r = _room(token); me = ident()
+    with ROOM_LOCK:
+        m = r["members"].get(me)
+        if "user" in session:
+            r["members"][me] = {"name": session["user"], "role": "host" if _is_host(r) else "member", "status": "admitted",
+                                "seen": now(), "t": __import__("time").time()}
+        elif m:
+            m["seen"] = now(); m["t"] = __import__("time").time()
+        else:
+            return jsonify(ok=False), 403
+    return _roster(r, me)
+
+def _roster(r, me):
+    import time as _t
+    with ROOM_LOCK:
+        for k in [k for k, v in r["members"].items() if _t.time() - v["t"] > 15]:
+            r["members"].pop(k, None)           # dropped off
+        mine = r["members"].get(me, {})
+        host = _is_host(r)
+        people = [dict(id=k, name=v["name"], role=v["role"], status=v["status"]) for k, v in r["members"].items()
+                  if v["status"] == "admitted" or host]
+    return jsonify(me=me, status=mine.get("status", "waiting"), is_host=bool(host), call_id=r["call_id"],
+                   title=r["title"], people=people)
+
+@app.route("/meet/<token>/roster")
+@participant_required
+def meet_roster(token):
+    r = _room(token); me = ident()
+    with ROOM_LOCK:
+        if me in r["members"]:
+            r["members"][me]["t"] = __import__("time").time()
+    return _roster(r, me)
+
+@app.route("/meet/<token>/admit", methods=["POST"])
+@login_required
+def meet_admit(token):
+    r = _room(token)
+    if not _is_host(r): return jsonify(ok=False), 403
+    j = request.get_json(); gid = j.get("id"); allow = bool(j.get("allow", True))
+    import time as _t
+    with ROOM_LOCK:
+        m = r["members"].get(gid)
+        if m:
+            if allow: m["status"] = "admitted"
+            else: r["members"].pop(gid, None)
+        SIG_SEQ[0] += 1
+        SIGNALS[gid].append((SIG_SEQ[0], _t.time(), {"type": "admitted" if allow else "denied", "from": session["user"], "to": gid, "seq": SIG_SEQ[0]}))
+    if m and allow: log_activity("admitted guest to meeting", m["name"], f"/meet/{token}")
+    return jsonify(ok=True)
+
+@app.route("/meet/<token>/leave", methods=["POST"])
+@participant_required
+def meet_leave(token):
+    r = ROOMS.get(token); me = ident()
+    if r:
+        with ROOM_LOCK:
+            r["members"].pop(me, None)
+            empty = not r["members"]
+        if empty:
+            db().execute("UPDATE calls SET ended=? WHERE id=? AND ended IS NULL", (now(), r["call_id"])); db().commit()
+    if session.get("guest_id"):
+        session.clear()
+    return jsonify(ok=True)
 
 # ------------------------------------------------------------- documents ----
 @app.route("/docs", methods=["GET", "POST"])

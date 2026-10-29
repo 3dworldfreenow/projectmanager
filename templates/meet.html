@@ -1,0 +1,123 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>{{room.title}} · Rainflow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+html,body{height:100%;margin:0;overflow:hidden}body{font:14px/1.4 Inter,system-ui,sans-serif;background:#0f1419;color:#fff;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:10px;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));background:#17202a;flex-shrink:0}
+.top b{font-weight:600}.top .st{color:#9fb0c3;font-size:12.5px}#rec{display:none;color:#ff5c5c;font-weight:600;font-size:12.5px}#rec.on{display:inline}@keyframes bl{50%{opacity:.3}}#rec.on::before{content:"● ";animation:bl 1s infinite}
+.grid{flex:1;display:grid;gap:6px;padding:6px;grid-template-columns:repeat(auto-fit,minmax(45%,1fr));align-content:center;min-height:0}
+.tile{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:4/3;max-height:100%}
+.tile video{width:100%;height:100%;object-fit:cover}.tile.me video{transform:scaleX(-1)}.tile.me.rear video{transform:none}
+.tile .nm{position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,.55);padding:2px 8px;border-radius:999px;font-size:12px}
+.tile .mute{position:absolute;right:8px;top:8px;background:rgba(0,0,0,.55);padding:3px 6px;border-radius:999px;font-size:12px;display:none}.tile.muted .mute{display:block}
+.grid.n1{grid-template-columns:1fr}.grid.n1 .tile{aspect-ratio:auto;height:100%}
+@media(min-width:861px){.grid{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}}
+.bar{display:flex;gap:10px;justify-content:center;align-items:center;padding:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom));background:#17202a;flex-shrink:0;flex-wrap:wrap}
+.cb{background:#2a3644;color:#fff;border:0;width:46px;height:46px;border-radius:50%;font-size:19px;cursor:pointer}.cb.off{background:#fff;color:#17202a}.cb.end{background:#d64545;width:auto;padding:0 18px;border-radius:999px;font-weight:600;font-size:14px}
+.cb.inv{background:#2f7de1;width:auto;padding:0 14px;border-radius:999px;font-size:14px;font-weight:500}
+#wait{position:absolute;inset:0;background:#0f1419;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;z-index:5}#wait.on{display:flex}
+#wait h2{margin:0 0 6px}#wait p{color:#9fb0c3;margin:0}
+#requests{position:absolute;top:calc(60px + env(safe-area-inset-top));left:10px;right:10px;z-index:6;display:flex;flex-direction:column;gap:8px}
+.req{background:#0f9d8a;color:#fff;padding:10px 12px;border-radius:12px;display:flex;align-items:center;gap:10px;box-shadow:0 10px 30px -10px rgba(0,0,0,.6)}.req button{border:0;border-radius:8px;padding:7px 12px;font:inherit;font-weight:600}.req .ok{background:#fff;color:#0b7a6b}.req .no{background:rgba(0,0,0,.25);color:#fff}
+#share{position:absolute;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:7;padding:20px}#share.on{display:flex}
+#share .box{background:#fff;color:#1c2430;border-radius:16px;padding:20px;max-width:420px;width:100%}#share input{width:100%;box-sizing:border-box;border:1px solid #d7dde7;border-radius:10px;padding:10px;font:inherit;font-size:13px}
+#share .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}#share .row a,#share .row button{flex:1;text-align:center;background:#2f7de1;color:#fff;border:0;border-radius:10px;padding:10px;font:inherit;font-weight:500;text-decoration:none;cursor:pointer}#share .row .sec{background:#f1f4f8;color:#1c2430}
+.toast{position:absolute;bottom:90px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);padding:8px 14px;border-radius:999px;font-size:13px;z-index:6}
+</style></head><body>
+<div class="top"><b>{{room.title}}</b><span class="st" id="st">connecting…</span><span id="rec">REC</span><span style="flex:1"></span><span class="st" id="count"></span></div>
+<div class="grid n1" id="grid"><div class="tile me" id="tile-me"><video id="local" autoplay muted playsinline></video><span class="nm">You{% if guest %} ({{guest_name}}){% endif %}</span><span class="mute">🔇</span></div></div>
+<div class="bar">
+  <button class="cb" id="bMute" title="Mute">🎙</button><button class="cb" id="bCam" title="Camera off">📷</button><button class="cb" id="bFlip" title="Switch camera">🔄</button>
+  {% if not guest %}<button class="cb inv" id="bInvite">➕ Invite</button>{% endif %}
+  <button class="cb end" id="bEnd">Leave</button>
+</div>
+<div id="wait"><h2>Waiting for the host to let you in…</h2><p>{{room.host}} will see your request. Keep this page open.</p></div>
+<div id="requests"></div>
+<div id="share"><div class="box"><h3 style="margin:0 0 4px">Invite anyone to this call</h3><p style="margin:0 0 10px;color:#7b8594;font-size:13px">They don't need an account — they enter a name and you admit them.</p>
+<input readonly id="link" value="{{ request.url_root.rstrip('/') }}/meet/{{token}}"><div class="row"><button onclick="navigator.clipboard.writeText(document.getElementById('link').value).then(()=>this.textContent='Copied ✓')">Copy link</button><button onclick="if(navigator.share)navigator.share({title:'Join my call',url:document.getElementById('link').value});else alert('Use Copy')">Share…</button><a target="_blank" href="https://wa.me/?text={{ ('Join my video call: ' ~ request.url_root.rstrip('/') ~ '/meet/' ~ token)|urlencode }}">WhatsApp</a><button class="sec" onclick="document.getElementById('share').classList.remove('on')">Close</button></div></div></div>
+<audio id="ring" preload="auto"></audio>
+<script>
+const TOKEN={{token|tojson}},ME={{me|tojson}},IS_HOST={{ 'true' if is_host else 'false' }},GUEST={{ 'true' if guest else 'false' }};
+const $=id=>document.getElementById(id);const tid=id=>'tile-'+String(id).replace(/[^a-z0-9]/gi,'_');let cfg={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+let local,callId=null,admitted=!GUEST,peers={},sigSeq=0,recorder=null,facing='user',muted=false,camOff=false,seenSig=new Set(),known={};
+const st=t=>$('st').textContent=t;const toast=t=>{const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2500);};
+const sendSignal=m=>fetch('/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({room:TOKEN},m))});
+let actx;function beep(f){try{actx=actx||new AudioContext();const t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();o.connect(g);g.connect(actx.destination);o.frequency.value=f;g.gain.setValueAtTime(.001,t);g.gain.exponentialRampToValueAtTime(.2,t+.02);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.start(t);o.stop(t+.35);}catch(e){}}
+
+async function start(){
+ try{cfg=await (await fetch('/rtc-config')).json();}catch(e){}
+ try{local=await navigator.mediaDevices.getUserMedia({audio:true,video:{width:{ideal:640},height:{ideal:480},facingMode:'user'}});}
+ catch(e){try{local=await navigator.mediaDevices.getUserMedia({audio:true});toast('No camera — joined with audio only');}catch(e2){alert('Could not access microphone/camera: '+e2.message+'\n\nAllow access in the browser (needs https) and reload.');return;}}
+ $('local').srcObject=local;
+ const j=await (await fetch(`/meet/${TOKEN}/join`,{method:'POST'})).json();callId=j.call_id;admitted=j.status==='admitted';
+ if(!admitted){$('wait').classList.add('on');st('waiting for host');}else{st('in call');onRoster(j);startRecording();}
+ setInterval(poll,1000);setInterval(roster,2000);}
+
+async function poll(){try{const j=await (await fetch('/signal/poll?since='+sigSeq)).json();sigSeq=j.seq||sigSeq;for(const m of j.msgs){if(seenSig.has(m.seq)||m.room!==TOKEN&&!['admitted','denied'].includes(m.type))continue;seenSig.add(m.seq);await onSignal(m);}}catch(e){}}
+async function roster(){try{const j=await (await fetch(`/meet/${TOKEN}/roster`)).json();onRoster(j);}catch(e){}}
+
+function onRoster(j){
+ if(!admitted&&j.status==='admitted'){admitted=true;$('wait').classList.remove('on');st('in call');startRecording();}
+ const others=j.people.filter(p=>p.id!==ME&&p.status==='admitted');
+ $('count').textContent=(others.length+1)+' in call';
+ // newcomer connects to everyone already here: whoever has the lexically smaller id makes the offer → no glare
+ if(admitted)for(const p of others){known[p.id]=p.name;if(!peers[p.id]&&ME<p.id)connect(p.id,true);}
+ for(const id in peers)if(!others.find(p=>p.id===id)){dropPeer(id);toast((known[id]||'someone')+' left');}
+ // host: waiting guests
+ if(j.is_host){const box=$('requests');const waiting=j.people.filter(p=>p.status==='waiting');
+  for(const w of waiting)if(!document.getElementById('req-'+tid(w.id))){const d=document.createElement('div');d.className='req';d.id='req-'+tid(w.id);
+   d.innerHTML=`<span style="flex:1"><b></b> wants to join</span><button class="ok">Admit</button><button class="no">Deny</button>`;d.querySelector('b').textContent=w.name;
+   d.querySelector('.ok').onclick=()=>admit(w.id,true,d);d.querySelector('.no').onclick=()=>admit(w.id,false,d);box.appendChild(d);beep(880);setTimeout(()=>beep(1100),200);if(navigator.vibrate)navigator.vibrate(200);}
+  [...box.children].forEach(d=>{if(!waiting.find(w=>'req-'+tid(w.id)===d.id))d.remove();});}
+ $('grid').className='grid n'+Math.min(Object.keys(peers).length+1,9);}
+async function admit(id,allow,el){await fetch(`/meet/${TOKEN}/admit`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,allow})});el.remove();}
+
+function makePc(id){if(peers[id]){try{peers[id].pc.close();}catch(e){}}const old=document.getElementById(tid(id));if(old)old.remove();const pc=new RTCPeerConnection(cfg);const p={pc,ice:[],remoteSet:false};peers[id]=p;
+ local.getTracks().forEach(t=>pc.addTrack(t,local));
+ pc.onicecandidate=e=>e.candidate&&sendSignal({to:id,type:'ice',data:e.candidate});
+ pc.ontrack=e=>{let t=document.getElementById(tid(id));if(!t){t=document.createElement('div');t.className='tile';t.id=tid(id);t.innerHTML='<video autoplay playsinline></video><span class="nm"></span><span class="mute">🔇</span>';$('grid').appendChild(t);}
+  t.querySelector('.nm').textContent=(known[id]||id).replace(/^guest:[^:]+:/,'');t.querySelector('video').srcObject=e.streams[0];$('grid').className='grid n'+Math.min(Object.keys(peers).length+1,9);};
+ pc.onconnectionstatechange=()=>{if(['failed','closed'].includes(pc.connectionState)){dropPeer(id);}};
+ return p;}
+async function connect(id,offer){const p=makePc(id);if(offer){const o=await p.pc.createOffer();await p.pc.setLocalDescription(o);sendSignal({to:id,type:'offer',data:o});}}
+async function onSignal(m){
+ if(m.type==='admitted'){if(!admitted){admitted=true;$('wait').classList.remove('on');st('in call');startRecording();roster();}return;}
+ if(m.type==='denied'){st('not admitted');alert('The host did not admit you.');location.href='/meet/'+TOKEN+'?bye=1';return;}
+ if(!admitted)return;
+ if(m.type==='offer'){const p=makePc(m.from);await p.pc.setRemoteDescription(m.data);p.remoteSet=true;for(const c of p.ice)try{await p.pc.addIceCandidate(c);}catch(e){}p.ice=[];
+   const a=await p.pc.createAnswer();await p.pc.setLocalDescription(a);sendSignal({to:m.from,type:'answer',data:a});}
+ else if(m.type==='answer'){const p=peers[m.from];if(!p)return;await p.pc.setRemoteDescription(m.data);p.remoteSet=true;for(const c of p.ice)try{await p.pc.addIceCandidate(c);}catch(e){}p.ice=[];}
+ else if(m.type==='ice'){const p=peers[m.from];if(!p)return;if(p.remoteSet){try{await p.pc.addIceCandidate(m.data);}catch(e){}}else p.ice.push(m.data);}}
+function dropPeer(id){const p=peers[id];if(p){try{p.pc.close();}catch(e){}delete peers[id];}const t=document.getElementById(tid(id));if(t)t.remove();$('grid').className='grid n'+Math.min(Object.keys(peers).length+1,9);}
+
+// ---- recording: all tiles composited on a canvas + mixed audio, streamed to the server every 2 s
+function startRecording(){if(recorder||!callId)return;
+ const ctx=new AudioContext(),dest=ctx.createMediaStreamDestination();const added=new Set();
+ const addAudio=s=>{if(s&&s.getAudioTracks().length&&!added.has(s.id)){added.add(s.id);ctx.createMediaStreamSource(s).connect(dest);}};addAudio(local);
+ const cv=document.createElement('canvas');cv.width=1280;cv.height=720;const g=cv.getContext('2d');
+ (function draw(){g.fillStyle='#000';g.fillRect(0,0,1280,720);const vids=[...document.querySelectorAll('.tile video')];vids.forEach(v=>v.srcObject&&addAudio(v.srcObject));
+   const n=vids.length,cols=Math.ceil(Math.sqrt(n)),rows=Math.ceil(n/cols),w=1280/cols,h=720/rows;
+   vids.forEach((v,i)=>{try{g.drawImage(v,(i%cols)*w,Math.floor(i/cols)*h,w-4,h-4);}catch(e){}});
+   if(recorder&&recorder.state==='recording')requestAnimationFrame(draw);else setTimeout(draw,500);})();
+ const tracks=[...dest.stream.getAudioTracks(),...cv.captureStream(12).getVideoTracks()];
+ const mime=['video/webm;codecs=vp8,opus','video/webm','video/mp4'].find(m=>MediaRecorder.isTypeSupported(m))||'';
+ try{recorder=new MediaRecorder(new MediaStream(tracks),mime?{mimeType:mime}:{});}catch(e){st('in call (no recording support)');return;}
+ recorder.ondataavailable=e=>{if(e.data.size)fetch(`/call/${callId}/chunk`,{method:'POST',body:e.data,keepalive:true}).catch(()=>{});};
+ recorder.start(2000);$('rec').classList.add('on');}
+
+// ---- controls
+$('bMute').onclick=()=>{muted=!muted;local.getAudioTracks().forEach(t=>t.enabled=!muted);$('bMute').classList.toggle('off',muted);$('bMute').textContent=muted?'🔇':'🎙';$('tile-me').classList.toggle('muted',muted);};
+$('bCam').onclick=()=>{camOff=!camOff;local.getVideoTracks().forEach(t=>t.enabled=!camOff);$('bCam').classList.toggle('off',camOff);};
+$('bFlip').onclick=async()=>{const old=local.getVideoTracks()[0];if(!old)return;$('bFlip').disabled=true;const want=facing==='user'?'environment':'user';old.stop();local.removeTrack(old);
+ let ns=null;for(const c of [{video:{facingMode:{exact:want}}},{video:{facingMode:want}}]){try{ns=await navigator.mediaDevices.getUserMedia(c);break;}catch(e){}}
+ if(!ns){try{ns=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing}});}catch(e){}toast('Could not switch camera');}else facing=want;
+ if(ns){const nt=ns.getVideoTracks()[0];local.addTrack(nt);$('local').srcObject=local;nt.enabled=!camOff;$('tile-me').classList.toggle('rear',facing!=='user');
+  for(const id in peers){const s=peers[id].pc.getSenders().find(x=>x.track&&x.track.kind==='video');if(s)try{await s.replaceTrack(nt);}catch(e){}}}
+ $('bFlip').disabled=false;};
+if($('bInvite'))$('bInvite').onclick=()=>$('share').classList.add('on');
+function leave(){try{if(recorder&&recorder.state==='recording'){recorder.requestData();recorder.stop();}}catch(e){}
+ for(const id in peers)dropPeer(id);if(local)local.getTracks().forEach(t=>t.stop());
+ navigator.sendBeacon(`/meet/${TOKEN}/leave`);fetch(`/call/${callId}/end`,{method:'POST',keepalive:true});}
+$('bEnd').onclick=()=>{leave();location.href=GUEST?'/meet/'+TOKEN+'?bye=1':'/calls';};
+window.addEventListener('pagehide',()=>{if(local)leave();});
+start();
+</script></body></html>
