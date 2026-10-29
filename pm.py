@@ -161,7 +161,11 @@ def push(users, title, body, url="/", urgent=False, even_if_online=False):
 @pm.route("/push/key")
 @login_required
 def push_key():
-    return jsonify(key=vapid_keys()["pub"])
+    try:
+        return jsonify(key=vapid_keys()["pub"])
+    except Exception as e:
+        return jsonify(error="Push is not available on the server: " + str(e) +
+                       " — admin: run `uv pip install --python .venv cryptography` and restart rainflow"), 503
 
 @pm.route("/push/subscribe", methods=["POST"])
 @login_required

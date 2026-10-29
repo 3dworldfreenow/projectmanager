@@ -6,3 +6,4 @@ openpyxl>=3.1
 # older servers (CentOS 7 / old gcc cannot compile Pillow 13 from source).
 reportlab>=4.0,<4.3
 pillow<11
+cryptography>=41     # Web Push (VAPID + payload encryption)

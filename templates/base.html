@@ -57,7 +57,8 @@ main{flex:1;min-width:0;padding:28px 32px 48px;max-width:1180px}
 .ph .actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:18px 20px;margin-bottom:14px;box-shadow:var(--sh)}
 .card.tight{padding:0}.card.tight>table{margin:0}
-.grid{display:grid;gap:14px}.g4{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}
+.grid{display:grid;gap:14px}.grid>*{min-width:0}.side360{grid-template-columns:1fr 360px}
+.card{min-width:0;overflow-wrap:anywhere}.row>*{min-width:0}.g4{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}
 .stat{padding:16px 18px}.stat .n{font-size:26px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}.stat .l{color:var(--muted);font-size:12.5px;margin-top:4px}
 table{width:100%;border-collapse:collapse}
 th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -97,9 +98,10 @@ details summary{cursor:pointer;list-style:none}details summary::-webkit-details-
   .topbar button{background:transparent;color:var(--ink);padding:8px;border:0}.topbar button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
   nav{display:none;position:fixed;inset:56px 0 0 0;height:auto;width:100%;z-index:19;border-right:0}
   nav.open{display:flex}
-  main{padding:14px 14px 32px;max-width:100%}
+  main{padding:14px 14px 32px;max-width:100%;overflow-x:hidden}
+  .rings{min-width:0}.ring{min-width:0}.ring .v{font-size:16px}.chips .chip{white-space:normal}
   h1{font-size:19px}
-  .g2,.g3{grid-template-columns:1fr}.g4{grid-template-columns:1fr 1fr}
+  .g2,.g3,.side360{grid-template-columns:1fr}.g4{grid-template-columns:1fr 1fr}
   .stat .n{font-size:22px}
   .card{padding:14px;border-radius:12px}
   .card:has(table){overflow-x:auto}table{min-width:560px}
@@ -192,7 +194,7 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch
 async function enablePush(silent){try{
  if(!('PushManager' in window))return silent?0:alert('This browser does not support push notifications. On iPhone, add Rainflow to the Home Screen first (Share → Add to Home Screen), then open it from there.');
  const perm=await Notification.requestPermission();if(perm!=='granted')return silent?0:alert('Notifications are blocked. Allow them in the browser site settings and try again.');
- const reg=await navigator.serviceWorker.ready;const key=(await (await fetch('/push/key')).json()).key;
+ const reg=await navigator.serviceWorker.ready;const kr=await fetch('/push/key');const kj=await kr.json().catch(()=>({error:'server returned an error ('+kr.status+')'}));if(!kj.key)throw new Error(kj.error||'no key');const key=kj.key;
  const conv=s=>{const b=atob(s.replace(/-/g,'+').replace(/_/g,'/').padEnd(Math.ceil(s.length/4)*4,'='));return Uint8Array.from(b,c=>c.charCodeAt(0));};
  let sub=await reg.pushManager.getSubscription();if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:conv(key)});
  await fetch('/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sub.toJSON())});

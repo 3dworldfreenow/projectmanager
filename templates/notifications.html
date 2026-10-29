@@ -2,7 +2,7 @@
 {% block pagetitle %}Notifications{% endblock %}
 {% block body %}
 <div class="ph"><div><h1>Notifications</h1><div class="sub">assignments, mentions, comments on your tasks, due reminders, missed calls</div></div></div>
-<div class="grid g2" style="grid-template-columns:1fr 360px">
+<div class="grid g2 side360">
 <div class="card">{% for n in rows %}<div class="row" style="padding:9px 0;border-bottom:1px solid var(--line);align-items:flex-start"><span style="width:8px;height:8px;border-radius:50%;background:{{ 'var(--blue)' if not n.read else 'transparent' }};margin-top:7px;flex-shrink:0"></span><div style="flex:1"><a href="{{n.link or '#'}}" style="color:var(--ink)">{{n.text}}</a><div class="muted">{{n.ts}}</div></div></div>{% else %}<div class="empty"><b>All quiet</b>You'll see assignments, mentions and reminders here.</div>{% endfor %}</div>
 <div class="card"><h3 style="margin-bottom:6px">Phone / desktop alerts (browser closed)</h3>
 <p class="muted" style="margin-top:0">Rings for incoming calls and shows new messages, mentions and assignments even when Rainflow isn't open. On iPhone, add Rainflow to the Home Screen first.</p>
