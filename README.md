@@ -7,6 +7,7 @@ For a software owner working with an IoT / hardware team on a weather station an
 - **Board** — Kanban (Backlog → To do → In progress → Review → Done), drag-and-drop, filters by assignee / type / label, quick-add per column
 - **Task page** — description, decision/outcome, checklist, subtasks, dependencies (blocked by / blocks), time logging vs estimate, labels, links to hardware / firmware / milestone, and a **dated log**: notes with @mentions, files, images, **voice and video notes recorded in the browser**
 - **My tasks**, **Timeline** (Gantt with dependency arrows, overdue, milestones), **Calendar** (due dates, milestones, firmware, tests, calls, activity per day)
+- **Push notifications (browser closed)** — Web Push (VAPID, no third-party service): incoming calls ring like a phone app, new messages / mentions / assignments arrive when you're not online. Enable per device on the Notifications page. Android: Chrome (installed or not). iPhone: add to Home Screen first (iOS 16.4+). Set `VAPID_EMAIL=you@example.com` in the service file (contact address required by push services).
 - **Notifications** — in-app bell + toasts for assignments, mentions, comments on your tasks, due/overdue reminders; optional **email** (SMTP_HOST/PORT/USER/PASS/FROM) and **Telegram** (TELEGRAM_BOT_TOKEN) per user
 - **Reports** — progress by status and member, completed this week, overdue, upcoming, hours logged, milestones; **PDF report** download
 - Old "Research" items are migrated into tasks automatically (type = research) with their logs and files

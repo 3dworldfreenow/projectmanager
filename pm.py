@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS user_prefs(
   username TEXT PRIMARY KEY, email TEXT, telegram_chat_id TEXT, notify_email INTEGER DEFAULT 0,
   notify_telegram INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS push_subs(
+  endpoint TEXT PRIMARY KEY, username TEXT, sub TEXT, ua TEXT, ts TEXT);
+CREATE TABLE IF NOT EXISTS presence(username TEXT PRIMARY KEY, last_seen REAL);
 """
 
 STATUSES = [("backlog", "Backlog"), ("todo", "To do"), ("doing", "In progress"), ("review", "Review"), ("done", "Done")]
@@ -112,9 +115,85 @@ def init_pm(con):
     con.commit()
 
 
-def notify(users, text, link=""):
-    """In-app notification (+ email / Telegram if the user enabled them)."""
+# ------------------------------------------------------------- web push --
+def vapid_keys():
     d = db()
+    row = d.execute("SELECT value FROM meta WHERE key='vapid'").fetchone()
+    if row:
+        return json.loads(row["value"])
+    import webpush
+    pem, pub = webpush.generate_vapid()
+    d.execute("INSERT INTO meta VALUES('vapid',?)", (json.dumps({"pem": pem, "pub": pub}),)); d.commit()
+    return {"pem": pem, "pub": pub}
+
+def touch_presence():
+    import time as _t
+    if "user" in session:
+        db().execute("INSERT INTO presence VALUES(?,?) ON CONFLICT(username) DO UPDATE SET last_seen=excluded.last_seen",
+                     (session["user"], _t.time())); db().commit()
+
+def is_online(username, within=25):
+    import time as _t
+    r = db().execute("SELECT last_seen FROM presence WHERE username=?", (username,)).fetchone()
+    return bool(r) and _t.time() - r["last_seen"] < within
+
+def push(users, title, body, url="/", urgent=False, even_if_online=False):
+    """Web Push to every device of each user (works with the browser closed)."""
+    try:
+        import webpush
+    except Exception:
+        return
+    d = db(); keys = vapid_keys(); subs = []
+    for u in set(users):
+        if not u or u == session.get("user"): continue
+        if not even_if_online and is_online(u): continue
+        for r in d.execute("SELECT sub FROM push_subs WHERE username=?", (u,)):
+            try: subs.append(json.loads(r["sub"]))
+            except Exception: pass
+    if not subs: return
+    subject = "mailto:" + os.environ.get("VAPID_EMAIL", "admin@example.com")
+    import sqlite3 as _sq
+    from app import DB
+    def on_dead(endpoint):
+        c = _sq.connect(DB); c.execute("DELETE FROM push_subs WHERE endpoint=?", (endpoint,)); c.commit(); c.close()
+    webpush.send_async(subs, {"title": title, "body": body, "url": url, "urgent": urgent}, keys["pem"], subject, on_dead)
+
+@pm.route("/push/key")
+@login_required
+def push_key():
+    return jsonify(key=vapid_keys()["pub"])
+
+@pm.route("/push/subscribe", methods=["POST"])
+@login_required
+def push_subscribe():
+    j = request.get_json()
+    db().execute("INSERT INTO push_subs(endpoint,username,sub,ua,ts) VALUES(?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET username=excluded.username, sub=excluded.sub, ts=excluded.ts",
+                 (j["endpoint"], session["user"], json.dumps(j), request.headers.get("User-Agent", "")[:120], now()))
+    db().commit(); return jsonify(ok=True)
+
+@pm.route("/push/unsubscribe", methods=["POST"])
+@login_required
+def push_unsubscribe():
+    j = request.get_json()
+    db().execute("DELETE FROM push_subs WHERE endpoint=?", (j.get("endpoint"),)); db().commit(); return jsonify(ok=True)
+
+@pm.route("/push/test", methods=["POST"])
+@login_required
+def push_test():
+    push([session["user"]], "Rainflow", "Push notifications are working on this device 🎉", "/notifications", even_if_online=True)
+    return jsonify(ok=True)
+
+@pm.route("/push/status")
+@login_required
+def push_status():
+    n = db().execute("SELECT COUNT(*) FROM push_subs WHERE username=?", (session["user"],)).fetchone()[0]
+    return jsonify(devices=n)
+
+
+def notify(users, text, link=""):
+    """In-app notification (+ push / email / Telegram if the user enabled them)."""
+    d = db()
+    push(users, "Rainflow", text, link)
     for u in set(users):
         if not u or u == session.get("user"):
             continue
@@ -476,6 +555,7 @@ def notif_prefs():
 @pm.route("/notifications/poll")
 @login_required
 def notif_poll():
+    touch_presence()
     rows = db().execute("SELECT id,text,link,ts FROM notifications WHERE username=? AND read=0 ORDER BY id DESC LIMIT 5", (session["user"],)).fetchall()
     n = db().execute("SELECT COUNT(*) FROM notifications WHERE username=? AND read=0", (session["user"],)).fetchone()[0]
     return jsonify(count=n, items=[dict(r) for r in rows])

@@ -465,6 +465,10 @@ def chat_send():
     for u in all_users():
         if f"@{u}" in body and u != session["user"]:
             log_activity("mentioned", f"@{u} in chat: {body[:60]}", "/chat")
+    # push to members who are not actively online (browser closed / phone locked)
+    from pm import push
+    preview = body[:90] if body else ("📎 " + (orig or "file"))
+    push([u for u in all_users() if u != session["user"]], session["user"], preview, "/chat")
     return jsonify(ok=True, id=cur.lastrowid)
 
 @app.route("/chat/<int:mid>/<action>", methods=["POST"])
@@ -515,6 +519,7 @@ def chat_history(mid):
 @login_required
 def chat_poll():
     """Return messages newer than ?after=<id> (client polls every 1.5 s)."""
+    from pm import touch_presence; touch_presence()
     after = int(request.args.get("after", 0))
     rows = db().execute("SELECT * FROM messages WHERE project_id=? AND id>? ORDER BY id",
                         (pid(), after)).fetchall()
@@ -550,6 +555,9 @@ def signal_send():
     with SIG_LOCK:
         SIG_SEQ[0] += 1; m["seq"] = SIG_SEQ[0]
         SIGNALS[m["to"]].append((SIG_SEQ[0], _t.time(), m))
+    if m.get("type") == "offer":
+        from pm import push
+        push([m["to"]], f"📞 Incoming {m.get('kind','video')} call", f"{session['user']} is calling you — tap to answer", "/chat", urgent=True, even_if_online=True)
     return jsonify(ok=True)
 
 @app.route("/signal/poll")
@@ -558,6 +566,7 @@ def signal_poll():
     """Return this user's signals with seq > ?since. Nothing is deleted on read;
     entries expire after 120 s. A fresh tab (since=0) only gets the last 30 s."""
     import time as _t
+    from pm import touch_presence; touch_presence()
     since = int(request.args.get("since", 0)); now_t = _t.time()
     with SIG_LOCK:
         q = [x for x in SIGNALS[session["user"]] if now_t - x[1] < 120]
