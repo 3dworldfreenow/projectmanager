@@ -8,3 +8,9 @@ uploads/recordings/*
 !uploads/recordings/.gitkeep
 screenshot_*.png
 .env
+
+# virtual environments
+.venv/
+venv/
+env/
+.env/

@@ -21,6 +21,10 @@ See `TODO.md` for what is not built yet.
 
 ## Run
 ```
+git clone https://github.com/3dworldfreenow/projectmanager
+cd projectmanager
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 python app.py
 ```
