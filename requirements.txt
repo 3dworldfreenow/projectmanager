@@ -1,4 +1,8 @@
 flask>=3.0
 werkzeug>=3.0
-reportlab>=4.0   # PDF export (agreement, invoice); falls back to print-to-PDF page if missing
-openpyxl>=3.1    # BOM Excel export; falls back to CSV if missing
+openpyxl>=3.1
+# PDF export (agreement, invoice). Optional - the app falls back to a print-to-PDF
+# page if reportlab is missing. Pinned so Pillow installs as a prebuilt wheel on
+# older servers (CentOS 7 / old gcc cannot compile Pillow 13 from source).
+reportlab>=4.0,<4.3
+pillow<11

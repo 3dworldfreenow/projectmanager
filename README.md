@@ -31,6 +31,13 @@ python app.py
 Open http://localhost:5000 — the first visit shows a **setup page** to create the admin and the first teammate.
 Everyone can change their own password (sidebar → Change password); admins manage members at **Team members**.
 
+### Install trouble?
+If `pip`/`uv` fails building **pillow** (old server, old gcc), install the core first and skip PDF:
+```
+uv pip install --python .venv flask werkzeug openpyxl
+```
+The app runs fully; PDF export falls back to a print-to-PDF page. Then try `uv pip install --python .venv "reportlab<4.3" "pillow<11"` to enable real PDFs.
+
 ## Letting the team connect
 Browsers only allow camera/mic on **https://** (or localhost), so for calls over the internet run the app
 behind an HTTPS tunnel (`ngrok http 5000`, Cloudflare Tunnel) or a server with a certificate.
