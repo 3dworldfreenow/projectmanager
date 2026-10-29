@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block title %}Join Rainflow{% endblock %}
+{% block body %}
+<div style="max-width:420px;margin:60px auto;text-align:center">
+  <div class="avatar av1" style="width:72px;height:72px;border-radius:20px;margin:0 auto 14px"><svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 3c-3 4.5-6 7.5-6 11a6 6 0 0 0 12 0c0-3.5-3-6.5-6-11z"/></svg></div>
+  {% if invalid %}<h1>This invite link is no longer valid</h1><p class="muted">It may have expired or already been used. Ask the person who invited you for a new link.</p>
+  {% else %}<h1 style="margin-bottom:4px">You're invited to Rainflow</h1><p class="muted">{{inv.created_by}} invited you to join as <b>{{inv.role}}</b>. Pick a username and password.</p>
+  <form method="post" class="card" style="text-align:left">
+    <label>Username</label><input name="username" required autofocus placeholder="e.g. priya">
+    <label>Password (6+ characters)</label><input name="password" type="password" required minlength="6">
+    <br><br><button style="width:100%;min-height:44px;justify-content:center">Join the team</button>
+  </form>{% endif %}
+</div>
+{% endblock %}

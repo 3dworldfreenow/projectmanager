@@ -11,6 +11,22 @@
   </div>
   <div class="row" style="margin-top:10px"><label style="margin:0"><input type="checkbox" name="is_admin" style="width:auto"> Make admin</label><button>Add member</button></div>
 </form>
+<div class="card" id="invites"><div class="row" style="margin-bottom:8px"><h3>Invite by link</h3><span class="muted">share a link — they choose their own password</span></div>
+<form method="post" action="{{url_for('invite_create')}}" class="row" style="gap:8px">
+  <select name="role" style="width:auto">{% for r in ROLES %}<option {% if r=='Guest' %}selected{% endif %}>{{r}}</option>{% endfor %}</select>
+  <input name="role_custom" placeholder="or custom role" style="width:150px">
+  <select name="days" style="width:auto"><option value="1">valid 1 day</option><option value="7" selected>valid 7 days</option><option value="30">valid 30 days</option></select>
+  <select name="uses" style="width:auto"><option value="1">single use</option><option value="5">up to 5 people</option><option value="50">up to 50 people</option></select>
+  <button>Create link</button></form>
+{% for i in invites %}<div class="row" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
+  <span class="tag info">{{i.role}}</span><input readonly value="{{base_url}}/join/{{i.token}}" id="inv-{{i.token}}" style="flex:1;min-width:200px;font-size:13px">
+  <button type="button" class="sec sm" onclick="navigator.clipboard.writeText(document.getElementById('inv-{{i.token}}').value).then(()=>this.textContent='Copied ✓')">Copy</button>
+  <button type="button" class="sm" onclick="shareInvite('{{base_url}}/join/{{i.token}}','{{i.role}}')">Share</button>
+  <a class="btn sec sm" href="https://wa.me/?text={{ ('Join our Rainflow project workspace as ' ~ i.role ~ ': ' ~ base_url ~ '/join/' ~ i.token)|urlencode }}" target="_blank">WhatsApp</a>
+  <span class="muted">expires {{i.expires[:10]}} · {{i.uses}}/{{i.max_uses}} used</span>
+  <form method="post" action="{{url_for('invite_revoke',token=i.token)}}"><button class="sec sm" title="revoke">✕</button></form></div>{% endfor %}
+</div>
+<script>function shareInvite(u,r){const d={title:'Join Rainflow',text:'Join our project workspace as '+r,url:u};if(navigator.share)navigator.share(d).catch(()=>{});else navigator.clipboard.writeText(u).then(()=>alert('Link copied'));}</script>
 <div class="card tight"><table><tr><th>User</th><th>Role</th><th>Status</th><th>Actions</th></tr>
 {% for u in users %}<tr><td><span class="avatar av{{ (loop.index % 3)+1 }}" style="width:30px;height:30px;font-size:13px">{{u.username[0]|upper}}</span> <b>{{u.username}}</b> {% if u.is_admin %}<span class="tag info">admin</span>{% endif %}</td>
 <td><form method="post" action="{{url_for('user_update',name=u.username)}}" class="row" style="gap:4px"><input type="hidden" name="action" value="role"><select name="role" style="width:auto">{% for r in ROLES %}<option {% if r==u.role %}selected{% endif %}>{{r}}</option>{% endfor %}{% if u.role not in ROLES %}<option selected>{{u.role}}</option>{% endif %}</select><input name="role_custom" placeholder="custom" style="width:110px"><button class="btn sec sm">Save</button></form></td>

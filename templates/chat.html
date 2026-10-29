@@ -38,6 +38,18 @@ audio{width:240px;max-width:100%;margin-top:4px}
 #callpanel{display:none;background:#1b2733;color:#fff;padding:10px 14px;flex-shrink:0}#callpanel.on{display:block}
 #callpanel .vids{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}#callpanel video{width:100%;background:#000;border-radius:10px;aspect-ratio:4/3;max-height:34vh;object-fit:cover}
 #callpanel.audio .vids{display:none}
+.cb{background:rgba(255,255,255,.14);color:#fff;border:0;width:38px;height:38px;border-radius:50%;padding:0;min-height:38px;font-size:17px;display:inline-flex;align-items:center;justify-content:center}.cb.off{background:#fff;color:#1b2733}
+/* full-screen call: remote fills the screen, local is a small picture-in-picture */
+#callpanel.full{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;padding:0;background:#000}
+#callpanel.full .cbar{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:12px 14px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.6));justify-content:center}
+#callpanel.full .cbar #status,#callpanel.full .cbar #rec{position:absolute;top:-30px;left:14px;font-size:13px;text-shadow:0 1px 3px #000}#callpanel.full .cbar #rec{left:auto;right:14px}
+#callpanel.full .vids{display:block;flex:1;margin:0;position:absolute;inset:0}
+#callpanel.full .rv{position:absolute;inset:0}#callpanel.full .rv video{width:100%;height:100%;max-height:none;aspect-ratio:auto;border-radius:0;object-fit:cover}
+#callpanel.full .lv{position:absolute;top:calc(12px + env(safe-area-inset-top));right:12px;width:28%;max-width:160px;z-index:2}#callpanel.full .lv video{border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.5);max-height:none}
+#callpanel.full.audio .vids{display:flex;align-items:center;justify-content:center;color:#fff;font-size:40px}#callpanel.full.audio .vids::before{content:"🎙";opacity:.5}
+#callpanel.full #local.mirror{transform:scaleX(-1)}
+#callpanel.full~*{visibility:hidden}
+body.incall .topbar{display:none!important}
 #rec{display:none;color:#ff5c5c;font-weight:600}#rec.on{display:inline}@keyframes blink{50%{opacity:.3}}#rec.on::before{content:"● ";animation:blink 1s infinite}
 #incoming{display:none;background:var(--teal);color:#fff;padding:10px 14px;align-items:center;gap:10px;flex-shrink:0}#incoming.on{display:flex}
 @media(max-width:860px){ html,body{height:100%;overflow:hidden;overscroll-behavior:none} body{position:fixed;inset:0} .topbar{position:fixed;top:0;left:0;right:0} main{position:fixed;left:0;right:0;top:calc(56px + env(safe-area-inset-top));bottom:0;height:auto} .msg{max-width:86%} .chathead{padding:8px 10px;gap:8px;flex-wrap:wrap} .chathead .nm{font-size:14px} .chathead .st{display:none} .tools{order:5;width:100%;padding-top:6px;border-top:1px solid var(--line);margin-top:4px} .search{flex:1} .search input{width:100%} #callee{flex-shrink:0} #log{padding:12px 10px 8px} }
@@ -55,8 +67,10 @@ audio{width:240px;max-width:100%;margin-top:4px}
 </div>
 <div id="incoming"><span>📞 Incoming <b id="kindName"></b> call from <b id="fromName"></b></span><div style="flex:1"></div><button id="btnAccept" class="sm" style="background:#fff;color:#2e9e45">Accept</button><button id="btnReject" class="sm" style="background:rgba(0,0,0,.25)">Reject</button></div>
 <div id="callpanel">
-  <div class="row"><b id="status">calling…</b> <span id="rec">REC</span><div style="flex:1"></div><button id="btnHang" class="btn danger sm">End call</button></div>
-  <div class="vids"><div><video id="local" autoplay muted playsinline></video></div><div><video id="remote" autoplay playsinline></video></div></div>
+  <div class="row cbar"><b id="status">calling…</b> <span id="rec">REC</span><div style="flex:1"></div>
+    <button type="button" class="cb" id="btnMute" title="Mute">🎙</button><button type="button" class="cb" id="btnCam" title="Camera off">📷</button><button type="button" class="cb" id="btnFlip" title="Switch camera">🔄</button><button type="button" class="cb" id="btnFull" title="Full screen">⛶</button>
+    <button id="btnHang" class="btn danger sm">End</button></div>
+  <div class="vids"><div class="lv"><video id="local" autoplay muted playsinline></video></div><div class="rv"><video id="remote" autoplay playsinline></video></div></div>
   <audio id="remoteAudio" autoplay></audio>
 </div>
 <div class="pinbar" id="pinbar" {% if not pinned %}style="display:none"{% endif %}>📌 {% for pm in pinned %}<span class="p" onclick="jump({{pm.id}})">{{ (pm.body or pm.orig_name or '')[:50] }}</span>{% if not loop.last %}·{% endif %}{% endfor %}</div>
@@ -164,7 +178,8 @@ async function getMedia(k){kind=k;
  catch(err){if(k==='video'&&/NotFound|Overconstrained/i.test(err.name)){try{local=await navigator.mediaDevices.getUserMedia({audio:true});kind='audio';setStatus('no camera found — voice only');}catch(e2){err=e2;}}
   if(!local){const why=/NotAllowed|Permission/i.test(err.name)?'Permission was blocked. Click the lock/camera icon in the address bar, allow Camera and Microphone, then try again.':/NotFound/i.test(err.name)?'No microphone/camera was found on this device.':/NotReadable|TrackStart/i.test(err.name)?'Another app is using the camera/microphone. Close it and try again.':err.message;
    callAlert('Could not start call',why);throw err;}}
- $('local').srcObject=local;$('callpanel').className='on'+(kind==='audio'?' audio':'');}
+ $('local').srcObject=local;$('callpanel').className='on'+(kind==='audio'?' audio':' video-call');$('local').classList.add('mirror');
+ if(matchMedia('(max-width:860px)').matches)setFull(true);}
 function makePc(){pc=new RTCPeerConnection(cfg);iceBuf=[];remoteSet=false;local.getTracks().forEach(t=>pc.addTrack(t,local));
  pc.onicecandidate=e=>e.candidate&&sendSignal({to:peer,type:'ice',data:e.candidate,callId});
  pc.ontrack=e=>{$('remote').srcObject=e.streams[0];$('remoteAudio').srcObject=e.streams[0];$('remoteAudio').play().catch(()=>{});if(!recorder)startRecording(e.streams[0]);};
@@ -189,7 +204,7 @@ function startRecording(remote){const ctx=new AudioContext(),dest=ctx.createMedi
 async function finish(){$('rec').classList.remove('on');recorder=null;if(!callId)return;setStatus('recording saved on server ✓');
  await fetch(`/call/${callId}/end`,{method:'POST'});
  await fetch('/chat/send',{method:'POST',body:new URLSearchParams({body:`📞 ${kind} call ended — recording saved (see Calls)`})});
- setTimeout(()=>$('callpanel').className='',1500);}
+ setTimeout(()=>{$('callpanel').className='';},1500);}
 window.addEventListener('pagehide',()=>{if(recorder&&recorder.state==='recording'){recorder.requestData();recorder.stop();}});
 async function call(k){pickPeer();if(!peer)return alert('No one else to call yet — add a team member first.');if(pc)return alert('A call is already in progress.');
  try{await getMedia(k);}catch(e){return;}ring(false);
@@ -223,10 +238,22 @@ async function acceptCall(){$('incoming').classList.remove('on');ring(false);cle
  sendSignal({to:peer,type:'answer',data:ans,callId});setStatus('connecting…');connectTimer();}
 $('btnAccept').onclick=acceptCall;
 $('btnReject').onclick=()=>{$('incoming').classList.remove('on');ring(false);clearTimeout(window.missT);broadcast('rejected',pendingOffer.callId);broadcast('rejected',pendingOffer.callId);fetch(`/call/${pendingOffer.callId}/status/rejected`,{method:'POST'});sendSignal({to:peer,type:'reject',callId:pendingOffer.callId});};
-function hangup(notify=true){ring(false);clearTimeout(noAnswerT);clearTimeout(connT);if(callId)broadcast('ended',callId);clearTimeout(connT);if(callId)broadcast('ended',callId);if(notify&&pc)sendSignal({to:peer,type:'hangup',callId});
+function hangup(notify=true){ring(false);clearTimeout(noAnswerT);clearTimeout(connT);if(callId)broadcast('ended',callId);setFull(false);muted=camOff=false;facing='user';$('btnMute').classList.remove('off');$('btnMute').textContent='🎙';$('btnCam').classList.remove('off');clearTimeout(connT);if(callId)broadcast('ended',callId);if(notify&&pc)sendSignal({to:peer,type:'hangup',callId});
  if(recorder&&recorder.state==='recording')recorder.stop();else{$('callpanel').className='';if(callId&&pc)fetch(`/call/${callId}/end`,{method:'POST'});}
  if(pc){pc.onconnectionstatechange=null;pc.close();pc=null;}if(local){local.getTracks().forEach(t=>t.stop());local=null;}}
 $('btnHang').onclick=()=>{hangup(true);setStatus('call ended');};
+// ---- in-call controls: mute, camera off, switch front/rear, full screen. Recording keeps running through all of them.
+let facing='user',muted=false,camOff=false;
+$('btnMute').onclick=()=>{if(!local)return;muted=!muted;local.getAudioTracks().forEach(t=>t.enabled=!muted);$('btnMute').classList.toggle('off',muted);$('btnMute').textContent=muted?'🔇':'🎙';};
+$('btnCam').onclick=()=>{if(!local)return;camOff=!camOff;local.getVideoTracks().forEach(t=>t.enabled=!camOff);$('btnCam').classList.toggle('off',camOff);};
+$('btnFlip').onclick=async()=>{if(!local||kind!=='video')return;facing=facing==='user'?'environment':'user';
+ try{const ns=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:640},height:{ideal:480}}});const nt=ns.getVideoTracks()[0];
+  const sender=pc&&pc.getSenders().find(s=>s.track&&s.track.kind==='video');if(sender)await sender.replaceTrack(nt);
+  local.getVideoTracks().forEach(t=>{t.stop();local.removeTrack(t);});local.addTrack(nt);$('local').srcObject=local;nt.enabled=!camOff;
+  $('local').classList.toggle('mirror',facing==='user');}catch(e){alert('Could not switch camera: '+e.message);}};
+function setFull(on){$('callpanel').classList.toggle('full',on);document.body.classList.toggle('incall',on);$('btnFull').textContent=on?'🗗':'⛶';if(on&&$('callpanel').requestFullscreen)$('callpanel').requestFullscreen().catch(()=>{});else if(!on&&document.fullscreenElement)document.exitFullscreen().catch(()=>{});}
+$('btnFull').onclick=()=>setFull(!$('callpanel').classList.contains('full'));
+document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement)$('callpanel').classList.remove('full');});
 // ---- browser notifications (incoming calls / mentions when the tab is hidden)
 function notify(title,body){try{if(Notification.permission==='granted'&&document.hidden)new Notification(title,{body,icon:'/static/icon.png'});}catch(e){}}
 try{if('Notification' in window&&Notification.permission==='default'){const ask=()=>{Notification.requestPermission();document.removeEventListener('click',ask);};document.addEventListener('click',ask);}}catch(e){}

@@ -50,6 +50,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS users(
   username TEXT PRIMARY KEY, pw_hash TEXT, role TEXT, is_admin INTEGER DEFAULT 0,
   active INTEGER DEFAULT 1);
+CREATE TABLE IF NOT EXISTS invites(
+  token TEXT PRIMARY KEY, role TEXT, created_by TEXT, expires TEXT, used_by TEXT, ts TEXT, max_uses INTEGER DEFAULT 1, uses INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS projects(
   id INTEGER PRIMARY KEY, name TEXT, description TEXT, status TEXT DEFAULT 'active',
   created TEXT);
@@ -162,7 +164,7 @@ def users_exist():
     return db().execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None
 
 ROLES = ["Project Manager", "Software Engineer", "IoT Engineer", "Hardware Engineer",
-         "Hardware Tester", "Firmware Developer", "Designer", "Client / Observer"]
+         "Hardware Tester", "Firmware Developer", "Designer", "Client / Observer", "Guest"]
 
 def all_users():
     return [r["username"] for r in db().execute("SELECT username FROM users WHERE active=1 ORDER BY rowid")]
@@ -252,7 +254,52 @@ def users():
                 flash("That username already exists")
         return redirect(url_for("users"))
     rows = d.execute("SELECT * FROM users ORDER BY rowid").fetchall()
-    return render_template("users.html", users=rows)
+    invites = d.execute("SELECT * FROM invites WHERE expires>=? AND uses<max_uses ORDER BY ts DESC", (now(),)).fetchall()
+    base_url = os.environ.get("APP_URL") or request.url_root.rstrip("/")
+    return render_template("users.html", users=rows, invites=invites, base_url=base_url)
+
+@app.route("/invite", methods=["POST"])
+@admin_required
+def invite_create():
+    f = request.form
+    days = int(f.get("days") or 7); uses = int(f.get("uses") or 1)
+    token = uuid.uuid4().hex[:20]
+    exp = (datetime.datetime.now() + datetime.timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
+    db().execute("INSERT INTO invites(token,role,created_by,expires,ts,max_uses) VALUES(?,?,?,?,?,?)",
+                 (token, f.get("role_custom") or f.get("role", "Guest"), session["user"], exp, now(), uses))
+    db().commit(); flash("Invite link created — share it below")
+    return redirect(url_for("users") + "#invites")
+
+@app.route("/invite/<token>/revoke", methods=["POST"])
+@admin_required
+def invite_revoke(token):
+    db().execute("DELETE FROM invites WHERE token=?", (token,)); db().commit()
+    return redirect(url_for("users") + "#invites")
+
+@app.route("/join/<token>", methods=["GET", "POST"])
+def join(token):
+    """Guest / member signs up through an invite link."""
+    inv = db().execute("SELECT * FROM invites WHERE token=?", (token,)).fetchone()
+    if not inv or inv["expires"] < now() or inv["uses"] >= inv["max_uses"]:
+        return render_template("join.html", invalid=True), 410
+    if request.method == "POST":
+        u, pw = request.form["username"].strip(), request.form["password"]
+        if not u or len(pw) < 6:
+            flash("Username required and password needs 6+ characters")
+        else:
+            try:
+                db().execute("INSERT INTO users(username,pw_hash,role,is_admin) VALUES(?,?,?,0)", (u, generate_password_hash(pw), inv["role"]))
+                db().execute("UPDATE invites SET uses=uses+1, used_by=COALESCE(used_by,'')||?||',' WHERE token=?", (u, token))
+                db().commit()
+                session["user"], session["role"], session["is_admin"] = u, inv["role"], False
+                session["pid"] = 1
+                log_activity("joined via invite", f"{u} as {inv['role']}", "/users")
+                db().commit()
+                flash(f"Welcome, {u}! You joined as {inv['role']}.")
+                return redirect(url_for("dashboard"))
+            except sqlite3.IntegrityError:
+                flash("That username is taken — choose another")
+    return render_template("join.html", inv=inv, invalid=False)
 
 @app.route("/users/<name>/update", methods=["POST"])
 @admin_required

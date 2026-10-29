@@ -17,6 +17,8 @@ For a software owner working with an IoT / hardware team on a weather station an
 
 ### Team & communication
 - **First-run setup** — creates your admin account + first teammate; no passwords in code
+- **Invite links (admin)** — create a link with a role (Guest, IoT Engineer, …), expiry and number of uses; share via WhatsApp / share sheet; the person picks their own username & password
+- **In-call controls** — mute, camera off, switch front/rear camera, full screen (automatic on phones); recording stays on through all of it
 - **Team members (admin)** — add people, set roles (Project Manager, IoT Engineer, Hardware Tester, custom…), reset passwords, disable, make admin
 - **Team chat** — saved forever; in-chat search; reply/quote; pin important messages (pinned bar); @mentions (highlighted + sound); voice notes (hold 🎤); edit (previous versions visible to all); delete; unread badges
 - **Calls inside chat** — voice 📞 / video 🎥 (WebRTC peer-to-peer), pick who to call, ringtone + vibration, missed-call list with badge; **server-side recording**: chunks stream to the server every 2 s during the call, so the recording survives a dropped phone or closed tab. Playback in *Call Recordings*.
