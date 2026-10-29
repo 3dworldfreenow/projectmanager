@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{% block title %}Rainflow{% endblock %}</title>
+<meta name="theme-color" content="#2f7de1">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="Rainflow">
+<link rel="manifest" href="/static/manifest.json"><link rel="icon" href="/static/icon-192.png"><link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -104,7 +107,19 @@ details summary{cursor:pointer;list-style:none}details summary::-webkit-details-
   input,textarea,select{font-size:16px;padding:10px 12px}
   .row>form{flex-shrink:0}
   .ph .actions{margin-left:0;width:100%}
+  /* app-style bottom tab bar */
+  .tabs{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:18;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+  .tabs a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;color:var(--muted);padding:4px 0;position:relative;font-weight:500}
+  .tabs a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .tabs a.active{color:var(--blue2)}.tabs .badge{position:absolute;top:0;left:calc(50% + 6px);margin:0;padding:0 5px;font-size:10px;line-height:16px}
+  body.has-tabs main{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+  .topbar{padding-top:env(safe-area-inset-top);height:calc(56px + env(safe-area-inset-top))}
+  nav{inset:calc(56px + env(safe-area-inset-top)) 0 0 0}
+  html{-webkit-tap-highlight-color:transparent}
+  @media (display-mode: standalone){.topbar{box-shadow:0 1px 0 var(--line)}}
 }
+@media(min-width:861px){.tabs{display:none}}
+#installbar{display:none;position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:30;background:var(--ink);color:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);align-items:center;gap:10px;font-size:13.5px}#installbar.on{display:flex}#installbar button{background:#fff;color:var(--ink);padding:7px 12px;min-height:0}
 </style>
 {% block head %}{% endblock %}
 </head>
@@ -160,7 +175,26 @@ details summary{cursor:pointer;list-style:none}details summary::-webkit-details-
 {% block body %}{% endblock %}
 </main>
 {% block scripts %}{% endblock %}
+{% if user and request.endpoint!='chat' %}
+<div class="tabs">
+  {% for ep,label,ic in [('dashboard','Home','dashboard'),('chat','Chat','chat'),('pm.board','Board','board'),('pm.calendar_view','Calendar','calendar'),('pm.notifications','Alerts','bell')] %}
+  <a class="{{ 'active' if request.endpoint==ep or (ep=='pm.board' and request.endpoint=='pm.task_item') }}" href="{{url_for(ep)}}"><svg viewBox="0 0 24 24">{{ I[ic]|safe }}</svg>{{label}}{% if ep=='chat' and unread %}<span class="badge">{{unread}}</span>{% elif ep=='pm.notifications' and notif_unread %}<span class="badge">{{notif_unread}}</span>{% endif %}</a>{% endfor %}
+</div>
+<script>if(matchMedia('(max-width:860px)').matches)document.body.classList.add('has-tabs');</script>
+{% endif %}
 {% if user %}
+<div id="installbar"><img src="/static/icon-192.png" width="36" height="36" style="border-radius:9px"><div style="flex:1">Install Rainflow as an app<br><span style="opacity:.75;font-size:12px">home-screen icon, full screen, faster</span></div><button id="installbtn">Install</button><span onclick="dismissInstall()" style="padding:6px;cursor:pointer;opacity:.7">✕</span></div>
+<script>
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+let deferredPrompt=null;const ib=document.getElementById('installbar');
+function dismissInstall(){ib.classList.remove('on');try{localStorage.setItem('rf_install_dismissed',Date.now());}catch(e){}}
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;let d=0;try{d=+localStorage.getItem('rf_install_dismissed')||0;}catch(x){}
+ if(Date.now()-d>7*864e5&&matchMedia('(max-width:860px)').matches)ib.classList.add('on');});
+document.getElementById('installbtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;ib.classList.remove('on');};
+// iOS has no install prompt: show a one-time hint
+(function(){const ios=/iphone|ipad|ipod/i.test(navigator.userAgent)&&!navigator.standalone;let d=0;try{d=+localStorage.getItem('rf_install_dismissed')||0;}catch(x){}
+ if(ios&&Date.now()-d>7*864e5){ib.querySelector('div').innerHTML='Add Rainflow to your Home Screen<br><span style="opacity:.75;font-size:12px">tap Share ⬆︎ then "Add to Home Screen"</span>';document.getElementById('installbtn').style.display='none';ib.classList.add('on');}})();
+</script>
 <div id="rftoast" style="position:fixed;right:16px;bottom:16px;z-index:999;display:flex;flex-direction:column;gap:8px;max-width:340px"></div>
 <script>(function(){let seen=new Set();setInterval(async()=>{try{const j=await (await fetch('/notifications/poll')).json();const b=document.getElementById('nbadge');if(b)b.textContent=j.count;
  j.items.forEach(n=>{if(seen.has(n.id))return;seen.add(n.id);if(seen.size===j.items.length&&!window.rfFirst){window.rfFirst=1;return;}

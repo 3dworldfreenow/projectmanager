@@ -40,7 +40,7 @@ audio{width:240px;max-width:100%;margin-top:4px}
 #callpanel.audio .vids{display:none}
 #rec{display:none;color:#ff5c5c;font-weight:600}#rec.on{display:inline}@keyframes blink{50%{opacity:.3}}#rec.on::before{content:"● ";animation:blink 1s infinite}
 #incoming{display:none;background:var(--teal);color:#fff;padding:10px 14px;align-items:center;gap:10px;flex-shrink:0}#incoming.on{display:flex}
-@media(max-width:860px){ .msg{max-width:86%} .chathead{padding:8px 10px;gap:8px;flex-wrap:wrap} .chathead .nm{font-size:14px} .chathead .st{display:none} .tools{order:5;width:100%;padding-top:6px;border-top:1px solid var(--line);margin-top:4px} .search{flex:1} .search input{width:100%} #callee{flex-shrink:0} #log{padding:12px 10px 8px} }
+@media(max-width:860px){ main{height:calc(100dvh - 56px - env(safe-area-inset-top))} .msg{max-width:86%} .chathead{padding:8px 10px;gap:8px;flex-wrap:wrap} .chathead .nm{font-size:14px} .chathead .st{display:none} .tools{order:5;width:100%;padding-top:6px;border-top:1px solid var(--line);margin-top:4px} .search{flex:1} .search input{width:100%} #callee{flex-shrink:0} #log{padding:12px 10px 8px} }
 </style>{% endblock %}
 {% block pagetitle %}Chat{% endblock %}
 {% block body %}
@@ -49,7 +49,7 @@ audio{width:240px;max-width:100%;margin-top:4px}
   <div><div class="nm">{{ projects|selectattr('id','equalto',current_pid)|map(attribute='name')|first }} team</div><div class="st" id="peerstate">{{ others|length + 1 }} members · all messages & calls saved</div></div>
   <div style="flex:1"></div>
   <div class="tools">{% if others|length > 1 %}<select id="callee" style="width:auto;background:var(--panel2)" title="who to call">{% for o in others %}<option>{{o}}</option>{% endfor %}</select>{% endif %}
-  <form class="search" onsubmit="return doSearch(event)"><input id="q" placeholder="Search messages" autocomplete="off"><button type="button" class="ib" onclick="clearSearch()" title="Clear search"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form></div>
+  <form class="search" onsubmit="return doSearch(event)"><input id="q" placeholder="Search messages" autocomplete="off" value="{{q}}"><button type="button" class="ib" onclick="clearSearch()" title="Clear search"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form></div>
   <button type="button" class="ib" id="btnAudio" title="Voice call"><svg viewBox="0 0 24 24"><path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg></button>
   <button type="button" class="ib" id="btnVideo" title="Video call"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg></button>
 </div>
@@ -61,6 +61,8 @@ audio{width:240px;max-width:100%;margin-top:4px}
 </div>
 <div class="pinbar" id="pinbar" {% if not pinned %}style="display:none"{% endif %}>📌 {% for pm in pinned %}<span class="p" onclick="jump({{pm.id}})">{{ (pm.body or pm.orig_name or '')[:50] }}</span>{% if not loop.last %}·{% endif %}{% endfor %}</div>
 <div id="log">
+  <div id="older" class="sys" style="margin-bottom:6px;{{ '' if has_older else 'display:none' }}">loading older…</div>
+  {% if q %}<div class="sys">{{msgs|length}} result(s) for "{{q}}" · <a href="{{url_for('chat')}}" style="color:#fff;text-decoration:underline">back to chat</a></div>{% endif %}
   {% for m in msgs %}<div class="msg {{ 'me' if m.sender==user }}{% if m.deleted %} del{% endif %}{% if ('@'~user) in (m.body or '') %} mentioned{% endif %}" data-id="{{m.id}}" data-sender="{{m.sender}}"><div class="who c{{ (m.sender|length % 5)+1 }}">{{m.sender}}</div>
   {% if m.reply_to and byid.get(m.reply_to) %}{% set q=byid[m.reply_to] %}<div class="quote" onclick="jump({{q.id}})"><b>{{q.sender}}</b>{{ (q.body or q.orig_name or '')[:80] }}</div>{% endif %}
   {% if m.deleted %}<div class="b">🚫 message deleted</div>{% elif m.body %}<div class="b">{{m.body}}</div>{% endif %}
@@ -82,13 +84,15 @@ audio{width:240px;max-width:100%;margin-top:4px}
 const $=id=>document.getElementById(id);
 const log=$('log'),me='{{user}}',pid={{current_pid}};let peer='{{other_user}}';
 const pickPeer=()=>{const c=$('callee');if(c)peer=c.value;};
-let lastId={{ msgs[-1].id if msgs else 0 }};log.scrollTop=log.scrollHeight;
+let lastId={{ last_id }};let hasOlder={{ 'true' if has_older else 'false' }},loadingOlder=false;log.scrollTop=log.scrollHeight;
 window.addEventListener('resize',()=>{log.scrollTop=log.scrollHeight;});
+{% if q %}(()=>{const q={{q|tojson}}.toLowerCase();document.querySelectorAll('.msg .b').forEach(b=>{const t=b.textContent,i=t.toLowerCase().indexOf(q);if(i<0)return;b.innerHTML='';b.append(t.slice(0,i));const m=document.createElement('mark');m.textContent=t.slice(i,i+q.length);b.append(m,t.slice(i+q.length));});})();{% endif %}
+{% if not q %}if(log.scrollHeight<=log.clientHeight+10)loadOlder();{% endif %}
 $('body').addEventListener('focus',()=>setTimeout(()=>{log.scrollTop=log.scrollHeight;},300));
 // ---------------- chat ----------------
 let replyId=null,quotes={};
 function fmtBody(el,txt){el.innerHTML='';txt.split(/(@\w+)/g).forEach(p=>{if(/^@\w+$/.test(p)){const s=document.createElement('span');s.className='mention';s.textContent=p;el.appendChild(s);}else el.append(p);});}
-function render(m){const d=document.createElement('div');d.className='msg'+(m.sender===me?' me':'')+(m.deleted?' del':'')+((m.body||'').includes('@'+me)?' mentioned':'');d.dataset.id=m.id;d.dataset.sender=m.sender;
+function render(m,prepend){const d=document.createElement('div');d.className='msg'+(m.sender===me?' me':'')+(m.deleted?' del':'')+((m.body||'').includes('@'+me)?' mentioned':'');d.dataset.id=m.id;d.dataset.sender=m.sender;
  const w=document.createElement('div');w.className='who c'+(m.sender.length%5+1);w.textContent=m.sender;d.appendChild(w);
  if(m.reply_to&&quotes[m.reply_to]){const q=quotes[m.reply_to];const qd=document.createElement('div');qd.className='quote';qd.onclick=()=>jump(m.reply_to);qd.innerHTML='<b></b>';qd.firstChild.textContent=q.sender;qd.append((q.body||q.orig_name||'').slice(0,80));d.appendChild(qd);}
  if(m.deleted){const t=document.createElement('div');t.className='b';t.textContent='🚫 message deleted';d.appendChild(t);}
@@ -99,7 +103,7 @@ function render(m){const d=document.createElement('div');d.className='msg'+(m.se
    else{const a=document.createElement('a');a.className='att';a.href=u;a.innerHTML='<span class="fi">📄</span><span></span>';a.lastChild.textContent=m.orig_name;d.appendChild(a);}}
  const t=document.createElement('div');t.className='t';
  t.innerHTML=(m.pinned?'📌 ':'')+(m.edited?`<span class="ed" onclick="showHistory(${m.id},this)">edited</span> `:'')+(m.deleted?'':`<span class="act"><span onclick="replyTo(${m.id})">↩ reply</span><span onclick="act(${m.id},'pin')">📌 pin</span>${m.sender===me?(m.body?`<span onclick="editMsg(${m.id})">✎ edit</span>`:'')+`<span onclick="act(${m.id},'delete')">🗑</span>`:''}</span> `)+m.ts.slice(-5);d.appendChild(t);
- log.appendChild(d);log.scrollTop=log.scrollHeight;if(m.sender!==me)beep(1);}
+ if(prepend){log.insertBefore(d,document.getElementById('older').nextSibling);}else{log.appendChild(d);log.scrollTop=log.scrollHeight;if(m.sender!==me)beep(1);}}
 function jump(id){const d=document.querySelector(`.msg[data-id="${id}"]`);if(d){d.scrollIntoView({block:'center'});d.classList.remove('hl');void d.offsetWidth;d.classList.add('hl');}}
 function replyTo(id){const d=document.querySelector(`.msg[data-id="${id}"]`);replyId=id;$('replyWho').textContent=d.dataset.sender;$('replyTxt').textContent=(d.querySelector('.b')?.textContent||d.querySelector('.att span:last-child')?.textContent||'attachment').slice(0,60);$('replybar').classList.add('on');$('body').focus();}
 function cancelReply(){replyId=null;$('replybar').classList.remove('on');}
@@ -129,21 +133,22 @@ async function poll(){try{const r=await fetch('/chat/poll?after='+lastId);const 
  j.edited.forEach(e=>{const d=document.querySelector(`.msg[data-id="${e.id}"]`);if(!d)return;const b=d.querySelector('.b');
   if(e.deleted&&!d.classList.contains('del')){location.reload();return;}
   if(b&&e.body&&b.textContent!==e.body&&!$('q').value&&!e.deleted){fmtBody(b,e.body);applyEdited(e.id);}});}catch(e){}}
-setInterval(poll,1500);
+{% if not q %}setInterval(poll,1500);{% endif %}
 const fileIn=$('file'),pend=$('pending');
 fileIn.onchange=()=>{pend.textContent=fileIn.files[0]?'📎 '+fileIn.files[0].name:'';};
 $('f').onsubmit=async e=>{e.preventDefault();const b=$('body');
  if(!b.value.trim()&&!fileIn.files[0])return;
  const fd=new FormData();fd.append('body',b.value);if(fileIn.files[0])fd.append('file',fileIn.files[0]);if(replyId)fd.append('reply_to',replyId);
  await fetch('/chat/send',{method:'POST',body:fd});fileIn.value='';pend.textContent='';b.value='';cancelReply();poll();};
-// ---------------- search (in-chat, highlights matches) ----------------
-function doSearch(e){e.preventDefault();const q=$('q').value.trim().toLowerCase();let first=null,n=0;
- document.querySelectorAll('.msg').forEach(d=>{const b=d.querySelector('.b');if(!b)return;const txt=b.textContent;
-  if(q&&txt.toLowerCase().includes(q)){n++;const i=txt.toLowerCase().indexOf(q);b.innerHTML='';b.append(txt.slice(0,i));const mk=document.createElement('mark');mk.textContent=txt.slice(i,i+q.length);b.append(mk,txt.slice(i+q.length));d.style.display='';first=first||d;}
-  else{b.textContent=txt;d.style.display=q?'none':'';}});
- $('peerstate').textContent=q?`${n} message(s) found for "${$('q').value}"`:'all messages & calls saved';
- if(first)first.scrollIntoView({block:'center'});return false;}
-function clearSearch(){$('q').value='';doSearch(new Event('x'));}
+// ---------------- lazy load older messages on scroll-up ----------------
+async function loadOlder(){if(!hasOlder||loadingOlder)return;loadingOlder=true;const first=document.querySelector('.msg');if(!first){loadingOlder=false;return;}
+ const r=await fetch('/chat/older?before='+first.dataset.id);const j=await r.json();Object.assign(quotes,j.quotes||{});
+ const prevH=log.scrollHeight;j.msgs.slice().reverse().forEach(m=>render(m,true));
+ log.scrollTop+=log.scrollHeight-prevH;hasOlder=j.has_more;if(!hasOlder)document.getElementById('older').style.display='none';loadingOlder=false;}
+log.addEventListener('scroll',()=>{if(log.scrollTop<80)loadOlder();});
+// ---------------- search (server-side, all history) ----------------
+function doSearch(e){e.preventDefault();const q=$('q').value.trim();if(q)location.href='/chat?q='+encodeURIComponent(q);return false;}
+function clearSearch(){location.href='/chat';}
 // ---------------- calls (WebRTC peer-to-peer, auto-recorded) ----------------
 let cfg={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
 fetch('/rtc-config').then(r=>r.json()).then(j=>{if(j.iceServers&&j.iceServers.length)cfg=j;}).catch(()=>{});

@@ -11,6 +11,10 @@ For a software owner working with an IoT / hardware team on a weather station an
 - **Reports** — progress by status and member, completed this week, overdue, upcoming, hours logged, milestones; **PDF report** download
 - Old "Research" items are migrated into tasks automatically (type = research) with their logs and files
 
+### Mobile app (PWA)
+- Installable: Chrome on Android shows an **Install** banner; on iPhone use Share → *Add to Home Screen*. Opens full-screen with its own icon, bottom tab bar (Home · Chat · Board · Calendar · Alerts), offline page.
+- Chat loads the latest 50 messages and fetches older ones as you scroll up; search covers the full history on the server. Activity is paginated by day.
+
 ### Team & communication
 - **First-run setup** — creates your admin account + first teammate; no passwords in code
 - **Team members (admin)** — add people, set roles (Project Manager, IoT Engineer, Hardware Tester, custom…), reset passwords, disable, make admin

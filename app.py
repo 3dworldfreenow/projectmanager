@@ -265,6 +265,15 @@ def user_update(name):
         d.execute("UPDATE users SET is_admin=1-is_admin WHERE username=?", (name,))
     d.commit(); return redirect(url_for("users"))
 
+@app.route("/sw.js")
+def sw():
+    r = send_from_directory(os.path.join(BASE, "static"), "sw.js")
+    r.headers["Service-Worker-Allowed"] = "/"; r.headers["Cache-Control"] = "no-cache"; return r
+
+@app.route("/offline")
+def offline():
+    return "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><body style='font-family:sans-serif;text-align:center;padding:60px 20px;color:#1c2430'><h2>You're offline</h2><p>Rainflow needs a connection. Try again when you're back online.</p><a href='/' style='color:#2f7de1'>Retry</a>"
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if not users_exist():
@@ -356,11 +365,30 @@ def chat():
         msgs = db().execute("SELECT * FROM messages WHERE project_id=? AND body LIKE ? ORDER BY id",
                             (pid(), f"%{q}%")).fetchall()
     else:
-        msgs = db().execute("SELECT * FROM messages WHERE project_id=? ORDER BY id", (pid(),)).fetchall()
-    pinned = [m for m in msgs if m["pinned"] and not m["deleted"]]
-    byid = {m["id"]: m for m in msgs}
-    _mark_seen(msgs[-1]["id"] if msgs else 0)
-    return render_template("chat.html", msgs=msgs, q=q, pinned=pinned, byid=byid, members=all_users())
+        # lazy loading: only the latest 50 messages; older ones load on scroll-up via /chat/older
+        msgs = db().execute("SELECT * FROM messages WHERE project_id=? ORDER BY id DESC LIMIT 50", (pid(),)).fetchall()[::-1]
+    pinned = db().execute("SELECT * FROM messages WHERE project_id=? AND pinned=1 AND deleted=0 ORDER BY id", (pid(),)).fetchall()
+    byid = _quotes(msgs)
+    last = db().execute("SELECT MAX(id) FROM messages WHERE project_id=?", (pid(),)).fetchone()[0] or 0
+    _mark_seen(last)
+    has_older = bool(msgs) and db().execute("SELECT 1 FROM messages WHERE project_id=? AND id<? LIMIT 1", (pid(), msgs[0]["id"])).fetchone() is not None
+    return render_template("chat.html", msgs=msgs, q=q, pinned=pinned, byid=byid, members=all_users(), has_older=has_older, last_id=last)
+
+def _quotes(msgs):
+    ids = [m["reply_to"] for m in msgs if m["reply_to"]]
+    if not ids: return {}
+    rows = db().execute(f"SELECT * FROM messages WHERE id IN ({','.join('?'*len(ids))})", ids).fetchall()
+    return {r["id"]: r for r in rows}
+
+@app.route("/chat/older")
+@login_required
+def chat_older():
+    before = int(request.args.get("before", 0))
+    rows = db().execute("SELECT * FROM messages WHERE project_id=? AND id<? ORDER BY id DESC LIMIT 50", (pid(), before)).fetchall()[::-1]
+    q = _quotes(rows)
+    has_more = bool(rows) and db().execute("SELECT 1 FROM messages WHERE project_id=? AND id<? LIMIT 1", (pid(), rows[0]["id"])).fetchone() is not None
+    return jsonify(msgs=[dict(r, is_image=is_image(r["filename"])) for r in rows], has_more=has_more,
+                   quotes={k: dict(v) for k, v in q.items()})
 
 def _mark_seen(last_id):
     db().execute("INSERT INTO seen(username,project_id,last_msg_id) VALUES(?,?,?) "
@@ -556,8 +584,15 @@ def recording(fn):
 @app.route("/activity")
 @login_required
 def activity():
-    rows = db().execute("SELECT * FROM activity WHERE project_id=? ORDER BY id DESC LIMIT 200", (pid(),)).fetchall()
-    return render_template("activity.html", rows=rows, since=session.get("prev_login"))
+    page = int(request.args.get("page", 1)); per = 40
+    rows = db().execute("SELECT * FROM activity WHERE project_id=? ORDER BY id DESC LIMIT ? OFFSET ?", (pid(), per + 1, (page - 1) * per)).fetchall()
+    has_more = len(rows) > per; rows = rows[:per]
+    # group by day
+    days = []
+    for r in rows:
+        if not days or days[-1][0] != r["ts"][:10]: days.append((r["ts"][:10], []))
+        days[-1][1].append(r)
+    return render_template("activity.html", days=days, page=page, has_more=has_more, since=session.get("prev_login"))
 
 # ------------------------------------------------------------- documents ----
 @app.route("/docs", methods=["GET", "POST"])

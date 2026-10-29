@@ -1,12 +1,12 @@
-{% extends "base.html" %}{% block title %}Activity{% endblock %}
+{% extends "base.html" %}{% block title %}Activity · Rainflow{% endblock %}
 {% block pagetitle %}Activity{% endblock %}
 {% block body %}
-<div class="ph"><div><h1>Activity</h1><div class="sub">everything that changed in this project</div></div></div>
-{% if since %}<p class="muted">Items highlighted happened since your previous login ({{since}}).</p>{% endif %}
-<div class="card">
-{% for a in rows %}<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line);{% if since and a.ts>since %}background:#fffbe6;margin:0 -16px;padding:8px 16px{% endif %}">
-<span class="avatar av{{ (a.who|length % 3)+1 }}" style="width:30px;height:30px;font-size:13px">{{a.who[0]|upper}}</span>
-<div style="flex:1"><b>{{a.who}}</b> {{a.action}} {% if a.link %}<a href="{{a.link}}">{{a.detail}}</a>{% else %}{{a.detail}}{% endif %}</div><span class="muted">{{a.ts}}</span></div>
-{% else %}<p class="muted">Nothing yet.</p>{% endfor %}
-</div>
+<div class="ph"><div><h1>Activity</h1><div class="sub">everything that changed in this project{% if since %} · highlighted = since your previous login ({{since}}){% endif %}</div></div></div>
+{% for day, rows in days %}
+<h2 style="margin:18px 0 6px">{{ 'Today' if day==today else day }}</h2>
+<div class="card tight">{% for a in rows %}<div class="row" style="padding:9px 14px;border-bottom:1px solid var(--line);{% if since and a.ts>since %}background:#fffbe6{% endif %}">
+<span class="avatar av{{ (a.who|length % 3)+1 }}" style="width:28px;height:28px;font-size:12px">{{a.who[0]|upper}}</span>
+<div style="flex:1;min-width:0"><b>{{a.who}}</b> {{a.action}} {% if a.link %}<a href="{{a.link}}">{{a.detail}}</a>{% else %}{{a.detail}}{% endif %}</div><span class="muted">{{a.ts[11:]}}</span></div>{% endfor %}</div>
+{% else %}<div class="card empty"><b>Nothing yet</b>Changes across the project will show here.</div>{% endfor %}
+<div class="row" style="justify-content:center;margin-top:10px">{% if page>1 %}<a class="btn sec" href="{{url_for('activity',page=page-1)}}">‹ Newer</a>{% endif %}{% if has_more %}<a class="btn sec" href="{{url_for('activity',page=page+1)}}">Older ›</a>{% endif %}</div>
 {% endblock %}

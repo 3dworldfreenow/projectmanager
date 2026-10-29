@@ -1,0 +1,15 @@
+{
+  "name": "Rainflow", "short_name": "Rainflow", "description": "IoT team project manager",
+  "start_url": "/", "scope": "/", "display": "standalone", "orientation": "portrait",
+  "background_color": "#f5f7fa", "theme_color": "#2f7de1",
+  "icons": [
+    {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "/static/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ],
+  "shortcuts": [
+    {"name": "Chat", "url": "/chat", "icons": [{"src": "/static/icon-192.png", "sizes": "192x192"}]},
+    {"name": "Board", "url": "/board", "icons": [{"src": "/static/icon-192.png", "sizes": "192x192"}]},
+    {"name": "My tasks", "url": "/my", "icons": [{"src": "/static/icon-192.png", "sizes": "192x192"}]}
+  ]
+}
