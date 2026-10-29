@@ -841,4 +841,7 @@ if __name__ == "__main__":
     # host 0.0.0.0 so your IoT expert can reach it on the LAN / via tunnel.
     # Note: browsers only allow camera/mic on https:// or localhost — for remote
     # use put it behind an HTTPS tunnel (e.g. `ngrok http 5000`, Cloudflare Tunnel).
-    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+    # HOST / PORT / SECRET_KEY can be set via environment (e.g. in a systemd unit).
+    # Behind Nginx use HOST=127.0.0.1; set a fixed SECRET_KEY so logins survive restarts.
+    app.run(host=os.environ.get("HOST", "0.0.0.0"), port=int(os.environ.get("PORT", 5000)),
+            debug=False, threaded=True)
