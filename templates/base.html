@@ -122,25 +122,32 @@ details summary{cursor:pointer;list-style:none}details summary::-webkit-details-
  'research':'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',
  'firmware':'<path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 9h8M8 13h5"/>',
  'milestones':'<path d="M12 3l2.6 5.4 6 .8-4.3 4.2 1 5.9L12 16.5 6.7 19.3l1-5.9L3.4 9.2l6-.8z"/>',
+ 'board':'<rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="13" rx="1.5"/>',
+ 'timeline':'<path d="M3 7h8M3 12h13M3 17h6"/><circle cx="18" cy="7" r="2"/><circle cx="12" cy="17" r="2"/>',
+ 'calendar':'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+ 'my':'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+ 'reports':'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+ 'bell':'<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
  'users':'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5 5 0 0 1 6 5"/>',
  'password':'<circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3M21 12v2"/>',
  'logout':'<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"/><path d="M14 8l4 4-4 4M18 12H9"/>'
 } %}
 {% set pname = projects|selectattr('id','equalto',current_pid)|map(attribute='name')|first %}
-<div class="topbar"><button type="button" aria-label="Menu" onclick="document.querySelector('nav').classList.toggle('open')"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div class="t">{% block pagetitle %}Rainflow{% endblock %}<small>{{ pname }}</small></div>{% if unread and request.endpoint!='chat' %}<a href="{{url_for('chat')}}" class="badge" style="margin:0">{{unread}}</a>{% endif %}<span class="avatar av1" style="width:32px;height:32px;font-size:13px">{{user[0]|upper}}</span></div>
+<div class="topbar"><button type="button" aria-label="Menu" onclick="document.querySelector('nav').classList.toggle('open')"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div class="t">{% block pagetitle %}Rainflow{% endblock %}<small>{{ pname }}</small></div>{% if unread and request.endpoint!='chat' %}<a href="{{url_for('chat')}}" class="badge" style="margin:0">💬 {{unread}}</a>{% endif %}<a href="{{url_for('pm.notifications')}}" style="position:relative;color:var(--ink2);display:inline-flex"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">{{ I['bell']|safe }}</svg>{% if notif_unread %}<span class="badge" style="position:absolute;top:-6px;right:-8px;margin:0;padding:0 5px;font-size:10px">{{notif_unread}}</span>{% endif %}</a><span class="avatar av1" style="width:32px;height:32px;font-size:13px">{{user[0]|upper}}</span></div>
 <nav>
   <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 3c-3 4.5-6 7.5-6 11a6 6 0 0 0 12 0c0-3.5-3-6.5-6-11z"/></svg></span>Rainflow</div>
   <form class="proj"><select onchange="location='/project/'+this.value" aria-label="Project">
     {% for p in projects %}<option value="{{p.id}}" {% if p.id==current_pid %}selected{% endif %}>{{p.name}}</option>{% endfor %}
   </select></form>
   {% set groups = [
-    ('', [('dashboard','Overview'),('activity','Activity')]),
-    ('Communicate', [('chat','Chat'),('calls','Calls'),('docs','Documents')]),
-    ('Build', [('hardware','Hardware'),('tests','Hardware tests'),('firmware','Firmware'),('research','Research & tasks')]),
-    ('Deliver', [('agreement','Agreement'),('milestones','Milestones & payments')])
+    ('', [('dashboard','Overview','dashboard'),('pm.notifications','Notifications','bell'),('activity','Activity','activity')]),
+    ('Plan', [('pm.board','Board','board'),('pm.my_tasks','My tasks','my'),('pm.timeline','Timeline','timeline'),('pm.calendar_view','Calendar','calendar'),('pm.reports','Reports','reports')]),
+    ('Communicate', [('chat','Chat','chat'),('calls','Calls','calls'),('docs','Documents','docs')]),
+    ('Build', [('hardware','Hardware','hardware'),('tests','Hardware tests','tests'),('firmware','Firmware','firmware')]),
+    ('Deliver', [('agreement','Agreement','agreement'),('milestones','Milestones & payments','milestones')])
   ] %}
   {% for gname, items in groups %}{% if gname %}<div class="grp">{{gname}}</div>{% endif %}
-  {% for ep,label in items %}<a class="item {% if request.endpoint==ep or (ep=='hardware' and request.endpoint=='hardware_item') %}active{% endif %}" href="{{url_for(ep)}}"><svg viewBox="0 0 24 24">{{ I[ep]|safe }}</svg>{{label}}{% if ep=='chat' and unread %}<span class="badge">{{unread}}</span>{% elif ep=='calls' and missed %}<span class="badge">{{missed}}</span>{% endif %}</a>{% endfor %}{% endfor %}
+  {% for ep,label,ic in items %}<a class="item {% if request.endpoint==ep or (ep=='hardware' and request.endpoint=='hardware_item') or (ep=='pm.board' and request.endpoint in ('pm.task_item',)) %}active{% endif %}" href="{{url_for(ep)}}"><svg viewBox="0 0 24 24">{{ I[ic]|safe }}</svg>{{label}}{% if ep=='chat' and unread %}<span class="badge">{{unread}}</span>{% elif ep=='calls' and missed %}<span class="badge">{{missed}}</span>{% elif ep=='pm.notifications' and notif_unread %}<span class="badge" id="nbadge">{{notif_unread}}</span>{% endif %}</a>{% endfor %}{% endfor %}
   {% if is_admin %}<div class="grp">Admin</div><a class="item {% if request.endpoint=='users' %}active{% endif %}" href="{{url_for('users')}}"><svg viewBox="0 0 24 24">{{ I['users']|safe }}</svg>Team members</a>{% endif %}
   <div class="spacer"></div>
   <div class="me"><span class="avatar av1">{{user[0]|upper}}</span><div style="flex:1;min-width:0"><div class="name">{{user}}</div><div class="sub">{{role}}</div></div>
@@ -153,6 +160,13 @@ details summary{cursor:pointer;list-style:none}details summary::-webkit-details-
 {% block body %}{% endblock %}
 </main>
 {% block scripts %}{% endblock %}
+{% if user %}
+<div id="rftoast" style="position:fixed;right:16px;bottom:16px;z-index:999;display:flex;flex-direction:column;gap:8px;max-width:340px"></div>
+<script>(function(){let seen=new Set();setInterval(async()=>{try{const j=await (await fetch('/notifications/poll')).json();const b=document.getElementById('nbadge');if(b)b.textContent=j.count;
+ j.items.forEach(n=>{if(seen.has(n.id))return;seen.add(n.id);if(seen.size===j.items.length&&!window.rfFirst){window.rfFirst=1;return;}
+  const t=document.createElement('a');t.href=n.link||'/notifications';t.style.cssText='background:#1c2430;color:#fff;padding:10px 14px;border-radius:12px;font-size:13.5px;box-shadow:0 10px 30px -10px rgba(0,0,0,.5);display:block';t.textContent=n.text;document.getElementById('rftoast').appendChild(t);setTimeout(()=>t.remove(),8000);
+  try{if(Notification.permission==='granted'&&document.hidden)new Notification('Rainflow',{body:n.text});}catch(e){}});}catch(e){}},5000);})();</script>
+{% endif %}
 {% if user and request.endpoint!='chat' %}
 <div id="rfcall" style="position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:1000;background:#0f9d8a;color:#fff;padding:12px 16px;border-radius:14px;box-shadow:0 12px 30px -8px rgba(0,0,0,.4);align-items:center;gap:12px;max-width:calc(100% - 24px)">
   <span style="font-size:22px;animation:rfshake 1s infinite">📞</span><div style="flex:1;min-width:0"><b id="rfwho"></b><div style="font-size:12.5px;opacity:.9" id="rfkind"></div></div>

@@ -1,0 +1,76 @@
+{% extends "base.html" %}{% block title %}Board · Rainflow{% endblock %}
+{% block pagetitle %}Board{% endblock %}
+{% block head %}<style>
+main{max-width:none}
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.filters select,.filters input{width:auto;padding:7px 10px;font-size:13px}
+.board{display:grid;grid-template-columns:repeat(5,minmax(196px,1fr));gap:12px;align-items:start;overflow-x:auto;padding-bottom:8px}
+.col{background:var(--surface2);border-radius:var(--r-lg);padding:10px;min-height:200px;border:1px solid transparent;transition:border-color .12s,background .12s}
+.col.over{border-color:var(--blue);background:var(--blue-soft)}
+.col h3{font-size:13px;color:var(--ink2);display:flex;align-items:center;gap:6px;padding:2px 4px 10px}.col h3 .n{margin-left:auto;background:var(--surface);border-radius:999px;padding:0 8px;font-size:12px;color:var(--muted)}
+.tk{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:grab;box-shadow:var(--sh);transition:box-shadow .12s,transform .12s;position:relative}
+.tk:hover{box-shadow:var(--sh2)}.tk.dragging{opacity:.45;transform:rotate(1.5deg)}
+.tk a.t{color:var(--ink);font-weight:600;font-size:14px;display:block;line-height:1.35}
+.tk .lb{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px}.lb i{display:inline-block;height:6px;width:28px;border-radius:3px}
+.tk .m{display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.tk .m .av{width:22px;height:22px;font-size:10.5px;margin-left:auto}
+.tk .due.over{color:#b43232;font-weight:600}.tk .due.soon{color:#9a6a0b;font-weight:600}
+.tk .pr{width:8px;height:8px;border-radius:50%;display:inline-block}.pr.high{background:var(--red)}.pr.medium{background:var(--amber)}.pr.low{background:var(--line2)}
+.tk .typ{font-size:11px;color:var(--muted);text-transform:none;background:var(--surface2);padding:0 6px;border-radius:4px}
+.add{display:block;width:100%;background:transparent;border:1px dashed var(--line2);color:var(--muted);border-radius:10px;padding:8px;font-size:13px;text-align:left}.add:hover{background:var(--surface);color:var(--ink)}
+.qa{display:none;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:8px}.qa.on{display:block}.qa input{margin-bottom:6px}
+@media(max-width:860px){.board{display:flex;gap:10px;scroll-snap-type:x mandatory}.col{min-width:84vw;scroll-snap-align:start}}
+</style>{% endblock %}
+{% block body %}
+<div class="ph"><div><h1>Board</h1><div class="sub">Drag cards between columns · click a card for its log, checklist, subtasks and time</div></div>
+<div class="actions"><a class="btn sec" href="{{url_for('pm.timeline')}}">Timeline</a><a class="btn sec" href="{{url_for('pm.calendar_view')}}">Calendar</a><a class="btn sec" href="{{url_for('pm.my_tasks')}}">My tasks</a></div></div>
+<form class="card filters" style="padding:10px 14px">
+  <input name="q" value="{{f.get('q','')}}" placeholder="Search tasks" style="min-width:160px">
+  <select name="assignee" onchange="this.form.submit()"><option value="">Anyone</option>{% for u in users %}<option {% if f.get('assignee')==u %}selected{% endif %}>{{u}}</option>{% endfor %}</select>
+  <select name="type" onchange="this.form.submit()"><option value="">All types</option>{% for t in TYPES %}<option {% if f.get('type')==t %}selected{% endif %}>{{t}}</option>{% endfor %}</select>
+  <select name="label" onchange="this.form.submit()"><option value="">All labels</option>{% for l in labels %}<option {% if f.get('label')==l %}selected{% endif %}>{{l}}</option>{% endfor %}</select>
+  <button class="sec sm">Filter</button>{% if f %}<a class="btn sec sm" href="{{url_for('pm.board')}}">Clear</a>{% endif %}
+</form>
+<div class="board">
+{% for st,label in STATUSES %}
+<div class="col" data-status="{{st}}">
+  <h3>{{label}}<span class="n">{{cols[st]|length}}</span></h3>
+  {% for t in cols[st] %}
+  <div class="tk" draggable="true" data-id="{{t.id}}">
+    {% if t.labels %}<div class="lb">{% for l in t.labels.split(',') if l %}<i style="background:{{labels.get(l,'#999')}}" title="{{l}}"></i>{% endfor %}</div>{% endif %}
+    <a class="t" href="{{url_for('pm.task_item',tid=t.id)}}">{{t.title}}</a>
+    <div class="m"><span class="pr {{t.priority}}" title="{{t.priority}} priority"></span>{% if t.type!='task' %}<span class="typ">{{t.type}}</span>{% endif %}
+      {% if t.due %}<span class="due {{ 'over' if t.status!='done' and t.due<today else 'soon' if t.status!='done' and t.due<= (today) else '' }}">{{ 'overdue · ' if t.status!='done' and t.due<today }}{{t.due[5:]}}</span>{% endif %}
+      {% if chk.get(t.id) %}<span>☑ {{chk[t.id][1] or 0}}/{{chk[t.id][0]}}</span>{% endif %}
+      {% if sub.get(t.id) %}<span>⤷ {{sub[t.id][1] or 0}}/{{sub[t.id][0]}}</span>{% endif %}
+      {% if cmt.get(t.id) %}<span>💬 {{cmt[t.id]}}</span>{% endif %}
+      {% if t.assignee %}<span class="avatar av{{ (t.assignee|length % 3)+1 }} av" title="{{t.assignee}}">{{t.assignee[0]|upper}}</span>{% endif %}</div>
+  </div>{% endfor %}
+  <div class="qa" id="qa-{{st}}"><form method="post" action="{{url_for('pm.task_new')}}"><input type="hidden" name="status" value="{{st}}"><input type="hidden" name="next" value="{{url_for('pm.board')}}"><input name="title" placeholder="Task title" required autocomplete="off">
+    <div class="row" style="gap:6px"><select name="assignee" style="width:auto;padding:6px 8px;font-size:13px"><option value="">Unassigned</option>{% for u in users %}<option {% if u==user %}selected{% endif %}>{{u}}</option>{% endfor %}</select><select name="type" style="width:auto;padding:6px 8px;font-size:13px">{% for ty in TYPES %}<option>{{ty}}</option>{% endfor %}</select><button class="sm">Add</button><button type="button" class="sec sm" onclick="qa('{{st}}',false)">Cancel</button></div></form></div>
+  <button type="button" class="add" onclick="qa('{{st}}',true)">+ Add task</button>
+</div>
+{% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function qa(st,on){const q=document.getElementById('qa-'+st);q.classList.toggle('on',on);if(on)q.querySelector('input[name=title]').focus();}
+let drag=null;
+document.querySelectorAll('.tk').forEach(c=>{
+ c.addEventListener('dragstart',e=>{drag=c;c.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
+ c.addEventListener('dragend',()=>{c.classList.remove('dragging');drag=null;document.querySelectorAll('.col.over').forEach(x=>x.classList.remove('over'));});
+});
+document.querySelectorAll('.col').forEach(col=>{
+ col.addEventListener('dragover',e=>{e.preventDefault();col.classList.add('over');const after=[...col.querySelectorAll('.tk:not(.dragging)')].find(c=>e.clientY<c.getBoundingClientRect().top+c.offsetHeight/2);
+   if(drag){if(after)col.insertBefore(drag,after);else col.insertBefore(drag,col.querySelector('.qa'));}});
+ col.addEventListener('dragleave',()=>col.classList.remove('over'));
+ col.addEventListener('drop',async e=>{e.preventDefault();col.classList.remove('over');if(!drag)return;
+   const order=[...col.querySelectorAll('.tk')].map(c=>+c.dataset.id);
+   await fetch('/tasks/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:+drag.dataset.id,status:col.dataset.status,order})});
+   document.querySelectorAll('.col').forEach(c=>c.querySelector('.n').textContent=c.querySelectorAll('.tk').length);});
+});
+// touch: long-press to move via prompt (mobile browsers lack HTML5 DnD)
+document.querySelectorAll('.tk').forEach(c=>{let t;c.addEventListener('touchstart',()=>{t=setTimeout(()=>{const s=prompt('Move to: backlog / todo / doing / review / done');if(s&&['backlog','todo','doing','review','done'].includes(s.trim())){fetch('/tasks/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:+c.dataset.id,status:s.trim(),order:[]})}).then(()=>location.reload());}},600);},{passive:true});
+ ['touchend','touchmove','touchcancel'].forEach(ev=>c.addEventListener(ev,()=>clearTimeout(t),{passive:true}));});
+</script>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block title %}Calendar · Rainflow{% endblock %}
+{% block pagetitle %}Calendar{% endblock %}
+{% block head %}<style>
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
+.cal .dow{background:var(--surface2);padding:8px;font-size:12px;font-weight:600;color:var(--muted);text-align:center}
+.day{background:var(--surface);min-height:104px;padding:6px;font-size:12px;display:flex;flex-direction:column;gap:3px;text-decoration:none;color:var(--ink);transition:background .12s}.day:hover{background:#fafbfd}
+.day.other{background:#fafbfc;color:var(--muted)}.day.today .n{background:var(--blue);color:#fff}.day.sel{outline:2px solid var(--blue);outline-offset:-2px}
+.day .n{width:24px;height:24px;border-radius:50%;display:inline-grid;place-items:center;font-weight:600;font-size:12.5px;margin-bottom:2px}
+.ev{padding:1px 6px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11.5px;background:var(--surface2)}
+.ev.due{background:var(--blue-soft);color:var(--blue2)}.ev.start{background:var(--surface2);color:var(--ink2)}.ev.done{background:var(--teal-soft);color:#0b7a6b}.ev.milestone{background:var(--amber-soft);color:#7a5407;font-weight:600}
+.ev.firmware{background:#ece8fa;color:#5b48b5}.ev.pass{background:var(--teal-soft);color:#0b7a6b}.ev.fail{background:var(--red-soft);color:#b43232}.ev.call{background:#e8f1fc;color:#1f66c2}
+.dots{margin-top:auto;display:flex;gap:6px;color:var(--muted);font-size:11px}
+.more{color:var(--muted);font-size:11px}
+.daypanel .it{display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px}.daypanel .it:last-child{border:0}
+@media(max-width:860px){.day{min-height:64px;padding:4px}.ev{display:none}.ev:first-of-type{display:block}.day .n{width:22px;height:22px}}
+</style>{% endblock %}
+{% block body %}
+<div class="ph"><div><h1>{{month_name}}</h1><div class="sub">due dates, milestones, firmware releases, tests, calls and activity by day — click a day</div></div>
+<div class="actions"><a class="btn sec" href="{{url_for('pm.calendar_view',y=prev.year,m=prev.month)}}">‹ {{prev.strftime('%b')}}</a><a class="btn sec" href="{{url_for('pm.calendar_view')}}">Today</a><a class="btn sec" href="{{url_for('pm.calendar_view',y=nxt.year,m=nxt.month)}}">{{nxt.strftime('%b')}} ›</a></div></div>
+<div class="cal">
+{% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}<div class="dow">{{d}}</div>{% endfor %}
+{% for week in weeks %}{% for day in week %}{% set k=day.isoformat() %}{% set items=ev.get(k,[]) %}
+<a class="day {{ 'other' if day.month!=m }} {{ 'today' if k==today }} {{ 'sel' if k==sel }}" href="{{url_for('pm.calendar_view',y=y,m=m,d=k)}}">
+  <span class="n">{{day.day}}</span>
+  {% for e in items[:3] %}<span class="ev {{e.kind}}" title="{{e.text}}">{{e.text}}</span>{% endfor %}{% if items|length>3 %}<span class="more">+{{items|length-3}} more</span>{% endif %}
+  <span class="dots">{% if act.get(k) %}<span title="activity">⚡{{act[k]}}</span>{% endif %}{% if msgs.get(k) %}<span title="chat messages">💬{{msgs[k]}}</span>{% endif %}</span>
+</a>{% endfor %}{% endfor %}
+</div>
+{% if sel %}<div class="card daypanel" style="margin-top:14px"><h3 style="margin-bottom:6px">{{sel}}</h3>
+{% for it in day_items %}<div class="it"><span class="ev {{it.kind}}" style="flex-shrink:0">{{ {'due':'due','start':'start','done':'done','milestone':'milestone','firmware':'firmware','pass':'test','fail':'test','call':'call','activity':'activity'}[it.kind] }}</span><a href="{{it.link}}" style="color:var(--ink)">{{it.text}}</a></div>{% else %}<div class="muted">Nothing on this day.</div>{% endfor %}</div>{% endif %}
+{% endblock %}

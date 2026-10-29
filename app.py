@@ -95,7 +95,10 @@ CREATE TABLE IF NOT EXISTS test_files(
 CREATE TABLE IF NOT EXISTS research(
   id INTEGER PRIMARY KEY, project_id INTEGER, title TEXT, details TEXT,
   owner TEXT, status TEXT DEFAULT 'todo', priority TEXT DEFAULT 'medium',
-  due TEXT, ts TEXT);
+  due TEXT, ts TEXT, decision TEXT);
+CREATE TABLE IF NOT EXISTS research_log(
+  id INTEGER PRIMARY KEY, research_id INTEGER, author TEXT, body TEXT, filename TEXT, orig_name TEXT,
+  kind TEXT DEFAULT 'note', ts TEXT);
 CREATE TABLE IF NOT EXISTS research_files(
   id INTEGER PRIMARY KEY, research_id INTEGER, filename TEXT, orig_name TEXT,
   uploaded_by TEXT, ts TEXT);
@@ -128,6 +131,12 @@ def unread_count():
                         (pid(), last, session["user"])).fetchone()[0]
 
 def init_db():
+    _init_db_core()
+    from pm import init_pm
+    con = sqlite3.connect(DB); con.row_factory = sqlite3.Row
+    init_pm(con); con.close()
+
+def _init_db_core():
     con = sqlite3.connect(DB)
     con.executescript(SCHEMA)
     # add columns to DBs created by earlier versions
@@ -135,7 +144,7 @@ def init_db():
                           ("messages","deleted","INTEGER DEFAULT 0"),("messages","kind","TEXT DEFAULT 'text'"),
                           ("calls","status","TEXT DEFAULT 'ringing'"),("hardware","photo","TEXT"),
                           ("hardware","datasheet","TEXT"),("hardware","min_qty","INTEGER DEFAULT 0"),
-                          ("tests","firmware_id","INTEGER")]:
+                          ("tests","firmware_id","INTEGER"),("research","decision","TEXT")]:
         try: con.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {typ}")
         except sqlite3.OperationalError: pass
     if not con.execute("SELECT 1 FROM projects").fetchone():
@@ -299,13 +308,14 @@ def dashboard():
         hardware=d.execute("SELECT COUNT(*) FROM hardware WHERE project_id=?", (p,)).fetchone()[0],
         tests_pass=d.execute("SELECT COUNT(*) FROM tests WHERE project_id=? AND passed=1", (p,)).fetchone()[0],
         tests_fail=d.execute("SELECT COUNT(*) FROM tests WHERE project_id=? AND passed=0", (p,)).fetchone()[0],
-        research_open=d.execute("SELECT COUNT(*) FROM research WHERE project_id=? AND status!='done'", (p,)).fetchone()[0],
-        research_done=d.execute("SELECT COUNT(*) FROM research WHERE project_id=? AND status='done'", (p,)).fetchone()[0],
+        research_open=d.execute("SELECT COUNT(*) FROM tasks WHERE project_id=? AND status!='done' AND parent_id IS NULL", (p,)).fetchone()[0],
+        research_done=d.execute("SELECT COUNT(*) FROM tasks WHERE project_id=? AND status='done' AND parent_id IS NULL", (p,)).fetchone()[0],
     )
     recent_msgs = d.execute("SELECT * FROM messages WHERE project_id=? ORDER BY id DESC LIMIT 5", (p,)).fetchall()
     recent_calls = d.execute("SELECT * FROM calls WHERE project_id=? ORDER BY id DESC LIMIT 5", (p,)).fetchall()
-    tasks = d.execute("SELECT * FROM research WHERE project_id=? AND status!='done' ORDER BY "
-                      "CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, due LIMIT 8", (p,)).fetchall()
+    due_reminders()
+    tasks = d.execute("SELECT *, assignee AS owner FROM tasks WHERE project_id=? AND status!='done' AND parent_id IS NULL ORDER BY "
+                      "CASE WHEN due IS NULL THEN 1 ELSE 0 END, due, CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 8", (p,)).fetchall()
     agreement = d.execute("SELECT * FROM agreements ORDER BY version DESC LIMIT 1").fetchone()
     ms = d.execute("SELECT status, amount FROM milestones WHERE project_id=?", (p,)).fetchall()
     ms_total = len(ms); ms_done = sum(1 for m in ms if m["status"] in ("delivered", "paid"))
@@ -696,46 +706,85 @@ def tests():
     return render_template("tests.html", tests=rows, hw=hw, fw=fw, tfiles=tfiles)
 
 # -------------------------------------------------------------- research ----
-@app.route("/research", methods=["GET", "POST"])
+@app.route("/_old/research", methods=["GET", "POST"])
 @login_required
-def research():
+def research_old():
     d = db()
     if request.method == "POST":
-        d.execute("INSERT INTO research(project_id,title,details,owner,priority,due,ts) VALUES(?,?,?,?,?,?,?)",
+        cur = d.execute("INSERT INTO research(project_id,title,details,owner,priority,due,ts) VALUES(?,?,?,?,?,?,?)",
                   (pid(), request.form["title"], request.form.get("details", ""), request.form.get("owner"),
                    request.form.get("priority", "medium"), request.form.get("due", ""), now()))
         log_activity("added research task", request.form["title"], "/research")
-        d.commit(); return redirect(url_for("research"))
+        d.commit(); return redirect(url_for("research_item", rid=cur.lastrowid))
     rows = d.execute("SELECT * FROM research WHERE project_id=? ORDER BY status='done', "
                      "CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, due", (pid(),)).fetchall()
-    files = {}
-    for f in d.execute("SELECT * FROM research_files ORDER BY id").fetchall():
-        files.setdefault(f["research_id"], []).append(f)
-    return render_template("research.html", items=rows, users=all_users(), files=files)
+    counts = {r["research_id"]: r["n"] for r in d.execute("SELECT research_id, COUNT(*) n FROM research_log GROUP BY research_id")}
+    last = {r["research_id"]: r["ts"] for r in d.execute("SELECT research_id, MAX(ts) ts FROM research_log GROUP BY research_id")}
+    return render_template("research.html", items=rows, users=all_users(), counts=counts, last=last)
+
+@app.route("/_old/research/<int:rid>")
+@login_required
+def research_item(rid):
+    d = db()
+    item = d.execute("SELECT * FROM research WHERE id=?", (rid,)).fetchone() or abort(404)
+    log = d.execute("SELECT * FROM research_log WHERE research_id=? ORDER BY id DESC", (rid,)).fetchall()
+    legacy = d.execute("SELECT * FROM research_files WHERE research_id=? ORDER BY id DESC", (rid,)).fetchall()
+    return render_template("research_item.html", item=item, log=log, legacy=legacy, users=all_users())
+
+@app.route("/research/<int:rid>/log", methods=["POST"])
+@login_required
+def research_log(rid):
+    """Add a dated entry to the research log: text and/or a file, image, voice or video note."""
+    d = db(); body = (request.form.get("body") or "").strip()
+    f = request.files.get("file"); fn = orig = None; kind = request.form.get("kind", "note")
+    if f and f.filename:
+        fn, orig = save_upload(f)
+        if kind == "note":
+            kind = "image" if is_image(fn) else "file"
+    if not body and not fn:
+        return redirect(url_for("research_item", rid=rid))
+    d.execute("INSERT INTO research_log(research_id,author,body,filename,orig_name,kind,ts) VALUES(?,?,?,?,?,?,?)",
+              (rid, session["user"], body, fn, orig, kind, now()))
+    t = d.execute("SELECT title FROM research WHERE id=?", (rid,)).fetchone()
+    log_activity(f"added {kind} to research", t["title"], f"/research/{rid}")
+    d.commit()
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify(ok=True)
+    return redirect(url_for("research_item", rid=rid))
+
+@app.route("/research/<int:rid>/log/<int:lid>/delete", methods=["POST"])
+@login_required
+def research_log_delete(rid, lid):
+    db().execute("DELETE FROM research_log WHERE id=? AND research_id=? AND author=?", (lid, rid, session["user"]))
+    db().commit(); return redirect(url_for("research_item", rid=rid))
 
 @app.route("/research/<int:rid>/file", methods=["POST"])
 @login_required
 def research_file(rid):
-    f = request.files.get("file")
-    if f and f.filename:
-        fn, orig = save_upload(f)
-        db().execute("INSERT INTO research_files(research_id,filename,orig_name,uploaded_by,ts) VALUES(?,?,?,?,?)",
-                     (rid, fn, orig, session["user"], now()))
-        db().commit()
-    return redirect(url_for("research"))
+    return research_log(rid)
+
+@app.route("/research/<int:rid>/update", methods=["POST"])
+@login_required
+def research_update(rid):
+    f = request.form
+    db().execute("UPDATE research SET title=?, details=?, decision=?, owner=?, priority=?, due=?, status=? WHERE id=?",
+                 (f["title"], f.get("details", ""), f.get("decision", ""), f.get("owner"), f.get("priority", "medium"),
+                  f.get("due", ""), f.get("status", "todo"), rid))
+    log_activity("updated research", f["title"], f"/research/{rid}"); db().commit()
+    return redirect(url_for("research_item", rid=rid))
 
 @app.route("/research/<int:rid>/details", methods=["POST"])
 @login_required
 def research_details(rid):
     db().execute("UPDATE research SET details=? WHERE id=?", (request.form["details"], rid)); db().commit()
-    return redirect(url_for("research"))
+    return redirect(url_for("research_item", rid=rid))
 
 @app.route("/research/<int:rid>/status/<status>", methods=["POST"])
 @login_required
 def research_status(rid, status):
     if status in ("todo", "doing", "done"):
         db().execute("UPDATE research SET status=? WHERE id=?", (status, rid)); db().commit()
-    return redirect(url_for("research"))
+    return redirect(request.referrer or url_for("research"))
 
 # -------------------------------------------------------------- firmware ----
 @app.route("/firmware", methods=["GET", "POST"])
@@ -867,6 +916,15 @@ def add_project():
     db().execute("INSERT INTO projects(name,description,created) VALUES(?,?,?)",
                  (request.form["name"], request.form.get("description", ""), now()))
     db().commit(); return redirect(url_for("dashboard"))
+
+from pm import pm as _pm, due_reminders
+app.register_blueprint(_pm)
+
+# old research URLs → tasks board
+@app.route("/research")
+@login_required
+def research():
+    return redirect(url_for("pm.board", type="research"))
 
 if __name__ == "__main__":
     init_db()

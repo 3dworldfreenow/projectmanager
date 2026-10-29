@@ -1,21 +1,33 @@
-{% extends "base.html" %}{% block title %}Research{% endblock %}
+{% extends "base.html" %}{% block title %}Research · Rainflow{% endblock %}
 {% block pagetitle %}Research{% endblock %}
+{% block head %}<style>
+.rcard{display:flex;gap:14px;align-items:flex-start;padding:14px 18px;border-bottom:1px solid var(--line);transition:background .12s}.rcard:hover{background:#fafbfd}.rcard:last-child{border-bottom:0}
+.rcard .st{width:10px;height:10px;border-radius:50%;margin-top:7px;flex-shrink:0;background:var(--line2)}.rcard .st.doing{background:var(--blue)}.rcard .st.done{background:var(--teal)}
+.rcard .t{flex:1;min-width:0}.rcard .t a{color:var(--ink);font-weight:600;font-size:15px}.rcard .t .s{color:var(--muted);font-size:12.5px;margin-top:2px}
+.rcard .meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.rcard.done .t a{color:var(--muted);text-decoration:line-through}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.col h3{margin-bottom:8px;font-size:13px;color:var(--muted)}.col h3 b{color:var(--ink)}
+@media(max-width:860px){.cols{grid-template-columns:1fr}}
+</style>{% endblock %}
 {% block body %}
-<div class="ph"><div><h1>Research & tasks</h1><div class="sub">{{items|rejectattr("status","equalto","done")|list|length}} open</div></div></div>
-<details class="card" {% if not items %}open{% endif %}><summary style="font-weight:600">+ Add a task</summary><form method="post" style="margin-top:8px">
-  <div class="grid g4"><div style="grid-column:span 2"><label>Title</label><input name="title" required placeholder="Compare anemometer options (hall vs optical)"></div>
+<div class="ph"><div><h1>Research & tasks</h1><div class="sub">{{items|rejectattr("status","equalto","done")|list|length}} open · each item keeps a dated log of notes, files, voice and video</div></div></div>
+<details class="card" {% if not items %}open{% endif %}><summary style="font-weight:600">+ New research item</summary><form method="post" style="margin-top:8px">
+  <div class="grid g4"><div style="grid-column:span 2"><label>Question / task</label><input name="title" required placeholder="Compare anemometer options (hall vs optical)"></div>
   <div><label>Owner</label><select name="owner">{% for u in users %}<option {% if u==user %}selected{% endif %}>{{u}}</option>{% endfor %}</select></div>
   <div><label>Priority</label><select name="priority"><option>high</option><option selected>medium</option><option>low</option></select></div></div>
-  <div class="grid g2"><div><label>Details / findings</label><textarea name="details"></textarea></div><div><label>Due</label><input name="due" type="date"></div></div>
-  <br><button>Add task</button>
+  <div class="grid g2"><div><label>Why / context</label><textarea name="details" style="min-height:60px"></textarea></div><div><label>Target date (optional)</label><input name="due" type="date"></div></div>
+  <br><button>Create & open log</button>
 </form></details>
-<div class="card tight"><table><tr><th>Task</th><th>Owner</th><th>Priority</th><th>Due</th><th>Status</th><th></th></tr>
-{% for r in items %}<tr style="{{ 'opacity:.5' if r.status=='done' }}"><td><b>{{r.title}}</b>
-<details><summary class="muted">{{ (r.details or 'add findings…')[:80] }}</summary>
-<form method="post" action="{{url_for('research_details',rid=r.id)}}"><textarea name="details">{{r.details}}</textarea><button class="btn sec sm">Save findings</button></form>
-<div style="margin-top:6px">{% for f in files.get(r.id,[]) %}<div>{% if f.filename|is_image %}<a href="{{url_for('uploaded',fn=f.filename)}}" target="_blank"><img src="{{url_for('uploaded',fn=f.filename)}}" style="max-width:160px;border-radius:6px"></a><br>{% endif %}<a href="{{url_for('uploaded',fn=f.filename)}}">📎 {{f.orig_name}}</a> <span class="muted">{{f.uploaded_by}}</span></div>{% endfor %}
-<form method="post" action="{{url_for('research_file',rid=r.id)}}" enctype="multipart/form-data" class="row"><input type="file" name="file" style="width:auto"><button class="btn sec sm">Attach</button></form></div></details></td><td>{{r.owner}}</td>
-<td><span class="tag {{ 'bad' if r.priority=='high' else 'warn' if r.priority=='medium' else '' }}">{{r.priority}}</span></td><td>{{r.due or '—'}}</td><td><span class="tag {{ 'ok' if r.status=='done' else 'info' }}">{{r.status}}</span></td>
-<td class="row">{% for s in ['todo','doing','done'] if s!=r.status %}<form method="post" action="{{url_for('research_status',rid=r.id,status=s)}}"><button class="btn sec sm">{{s}}</button></form>{% endfor %}</td></tr>
-{% else %}<tr><td colspan="6"><div class="empty"><b>No research items</b>Track questions to answer, parts to compare and decisions to make.</div></td></tr>{% endfor %}</table></div>
+<div class="cols">
+{% for st,label in [('todo','To research'),('doing','In progress'),('done','Decided / done')] %}
+<div class="col"><h3><b>{{label}}</b> · {{ items|selectattr('status','equalto',st)|list|length }}</h3>
+<div class="card tight">
+{% for r in items if r.status==st %}<div class="rcard {{r.status}}"><span class="st {{r.status}}"></span><div class="t"><a href="{{url_for('pm.task_item',tid=r.id)}}">{{r.title}}</a>
+<div class="s">{{r.owner}}{% if r.due %} · target {{r.due}}{% endif %} · {{ counts.get(r.id,0) }} log entr{{'y' if counts.get(r.id,0)==1 else 'ies'}}{% if last.get(r.id) %} · last {{ last[r.id][5:] }}{% endif %}</div>
+{% if r.decision %}<div class="s" style="color:#0b7a6b">✓ {{r.decision[:90]}}</div>{% endif %}</div>
+<div class="meta"><span class="tag {{ 'bad' if r.priority=='high' else 'warn' if r.priority=='medium' else '' }}">{{r.priority}}</span></div></div>
+{% else %}<div class="empty" style="padding:22px">{{ 'Nothing here yet' }}</div>{% endfor %}
+</div></div>
+{% endfor %}
+</div>
 {% endblock %}

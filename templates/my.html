@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block title %}My tasks · Rainflow{% endblock %}
+{% block pagetitle %}My tasks{% endblock %}
+{% block body %}
+<div class="ph"><div><h1>My tasks</h1><div class="sub">{{rows|length}} open, across all projects, soonest first</div></div><div class="actions"><a class="btn sec" href="{{url_for('pm.board')}}">Board</a></div></div>
+<div class="card tight"><table><tr><th>Task</th><th>Project</th><th>Status</th><th>Priority</th><th>Due</th></tr>
+{% for t in rows %}<tr><td><a href="{{url_for('pm.task_item',tid=t.id)}}" style="color:var(--ink);font-weight:600">{{t.title}}</a></td><td class="muted">{{t.pname}}</td><td><span class="tag {{ 'info' if t.status in ('doing','review') }}">{{ dict(STATUSES)[t.status] }}</span></td>
+<td><span class="tag {{ 'bad' if t.priority=='high' else 'warn' if t.priority=='medium' else '' }}">{{t.priority}}</span></td><td style="{{ 'color:#b43232;font-weight:600' if t.due and t.due<today }}">{{t.due or '—'}}</td></tr>
+{% else %}<tr><td colspan="5"><div class="empty"><b>Nothing assigned to you</b>Enjoy it while it lasts.</div></td></tr>{% endfor %}</table></div>
+{% endblock %}

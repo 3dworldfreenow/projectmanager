@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% block title %}Reports · Rainflow{% endblock %}
+{% block pagetitle %}Reports{% endblock %}
+{% block body %}
+{% set total=tasks|length %}
+<div class="ph"><div><h1>Reports</h1><div class="sub">{{project.name}} · last 7 days ({{week_ago}} → {{today}})</div></div><div class="actions"><a class="btn" href="{{url_for('pm.reports_pdf')}}" target="_blank">Download PDF report</a></div></div>
+<div class="grid g4">
+  <div class="card stat"><div class="n">{{ (100*by_status.done/total)|round|int if total else 0 }}%</div><div class="l">tasks done ({{by_status.done}}/{{total}})</div><div class="bar ok" style="margin-top:8px"><i style="width:{{ (100*by_status.done/total) if total else 0 }}%"></i></div></div>
+  <div class="card stat"><div class="n" style="color:var(--teal)">{{done_week|length}}</div><div class="l">completed this week</div></div>
+  <div class="card stat"><div class="n" style="color:{{ 'var(--red)' if overdue else 'var(--ink)' }}">{{overdue|length}}</div><div class="l">overdue</div></div>
+  <div class="card stat"><div class="n">{{upcoming|length}}</div><div class="l">due in next 14 days</div></div>
+</div>
+<div class="grid g2">
+<div>
+  <div class="card"><h3 style="margin-bottom:8px">By status</h3>{% for s,l in STATUSES %}<div class="row" style="padding:4px 0"><span style="width:100px">{{l}}</span><div class="bar" style="flex:1"><i style="width:{{ (100*by_status[s]/total) if total else 0 }}%;background:{{ {'backlog':'#c9d4e3','todo':'#9fb3cc','doing':'var(--blue)','review':'#7f6bd0','done':'var(--teal)'}[s] }}"></i></div><span class="num muted" style="width:28px;text-align:right">{{by_status[s]}}</span></div>{% endfor %}</div>
+  <div class="card tight"><table><tr><th>Member</th><th>Tasks</th><th>Done</th><th>Overdue</th><th>Hours</th></tr>{% for u,v in by_user.items() %}<tr><td><b>{{u}}</b></td><td>{{v.total}}</td><td>{{v.done}}</td><td style="{{ 'color:#b43232;font-weight:600' if v.overdue }}">{{v.overdue}}</td><td class="num">{{ '%.1f'|format(time.get(u,0)/60) }}</td></tr>{% endfor %}</table></div>
+  <div class="card tight"><table><tr><th>Milestone</th><th>Amount</th><th>Due</th><th>Status</th></tr>{% for m in ms %}<tr><td>{{m.title}}</td><td class="num">₹{{'%.0f'|format(m.amount or 0)}}</td><td>{{m.due or '—'}}</td><td><span class="tag {{ 'ok' if m.status=='paid' else 'info' if m.status=='delivered' else '' }}">{{m.status.replace('_',' ')}}</span></td></tr>{% else %}<tr><td colspan="4" class="muted">No milestones.</td></tr>{% endfor %}</table></div>
+</div>
+<div>
+  <div class="card"><h3 style="margin-bottom:6px">Overdue</h3>{% for t in overdue %}<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><a href="{{url_for('pm.task_item',tid=t.id)}}" style="flex:1;color:var(--ink)">{{t.title}}</a><span class="muted">{{t.assignee or '—'}}</span><span style="color:#b43232;font-weight:600">{{t.due}}</span></div>{% else %}<div class="muted">Nothing overdue 🎉</div>{% endfor %}</div>
+  <div class="card"><h3 style="margin-bottom:6px">Completed this week</h3>{% for t in done_week %}<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><a href="{{url_for('pm.task_item',tid=t.id)}}" style="flex:1;color:var(--ink)">{{t.title}}</a><span class="muted">{{t.assignee or '—'}} · {{t.done_ts[5:]}}</span></div>{% else %}<div class="muted">Nothing completed yet this week.</div>{% endfor %}</div>
+  <div class="card"><h3 style="margin-bottom:6px">Due in next 14 days</h3>{% for t in upcoming %}<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><a href="{{url_for('pm.task_item',tid=t.id)}}" style="flex:1;color:var(--ink)">{{t.title}}</a><span class="muted">{{t.assignee or '—'}}</span><span>{{t.due}}</span></div>{% else %}<div class="muted">Nothing due soon.</div>{% endfor %}</div>
+  <div class="card"><h3 style="margin-bottom:6px">Hardware & tests</h3><div class="muted">{{hw.n or 0}} parts · BOM ≈ ₹{{'%.0f'|format(hw.c or 0)}} · tests {{tests.p or 0}} passed of {{tests.n or 0}}</div></div>
+</div></div>
+{% endblock %}

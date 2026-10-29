@@ -1,0 +1,101 @@
+{% extends "base.html" %}{% block title %}{{item.title}} · Rainflow{% endblock %}
+{% block pagetitle %}Research{% endblock %}
+{% block head %}<style>
+.hero{display:grid;grid-template-columns:1fr 320px;gap:14px}
+.decision{background:var(--teal-soft);border:1px solid #bfe8df;border-radius:var(--r-lg);padding:14px 16px}.decision h3{color:#0b7a6b;font-size:13px;margin-bottom:6px}
+.entry{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}.entry:last-child{border-bottom:0}
+.entry .when{width:92px;flex-shrink:0;font-size:12px;color:var(--muted);line-height:1.4;padding-top:2px}.entry .when b{display:block;color:var(--ink2);font-weight:600;font-size:12.5px}
+.entry .c{flex:1;min-width:0}.entry .c .by{font-size:12.5px;color:var(--muted);margin-bottom:3px}.entry .c .by b{color:var(--ink)}
+.entry .kind{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--blue2);background:var(--blue-soft);padding:1px 8px;border-radius:999px;margin-left:6px}
+.entry img{max-width:100%;max-height:320px;border-radius:10px;display:block;margin-top:6px}
+.entry video{max-width:100%;width:420px;border-radius:10px;background:#000;margin-top:6px}
+.entry audio{width:100%;max-width:420px;margin-top:6px}
+.entry .del{opacity:0;font-size:12px;color:var(--muted);cursor:pointer;margin-left:8px}.entry:hover .del{opacity:1}
+.composer{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);margin:0 -20px -18px;padding:12px 20px;border-radius:0 0 var(--r-lg) var(--r-lg)}
+.composer textarea{min-height:56px}
+.rbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.rbar .recbtn.on{background:var(--red);border-color:var(--red);color:#fff}
+#preview{display:none;margin-top:8px;align-items:center;gap:10px;background:var(--surface2);padding:8px 10px;border-radius:var(--r)}#preview.on{display:flex}
+#preview video,#preview audio{max-width:220px;border-radius:8px}
+@media(max-width:860px){.hero{grid-template-columns:1fr}.entry{flex-direction:column;gap:4px}.entry .when{width:auto;display:flex;gap:6px}.entry .when b{display:inline}.entry .del{opacity:1}.composer{margin:0 -14px -14px;padding:10px 14px}}
+</style>{% endblock %}
+{% block body %}
+<div class="ph"><div><a href="{{url_for('pm.board')}}" class="muted">← Research & tasks</a><h1 style="margin-top:4px">{{item.title}}</h1><div class="sub">{{item.owner}} · <span class="tag {{ 'bad' if item.priority=='high' else 'warn' if item.priority=='medium' else '' }}">{{item.priority}}</span> <span class="tag {{ 'ok' if item.status=='done' else 'info' if item.status=='doing' else '' }}">{{ {'todo':'to research','doing':'in progress','done':'done'}[item.status] }}</span>{% if item.due %} · target {{item.due}}{% endif %} · opened {{item.ts}}</div></div>
+<div class="actions">{% for st,l in [('todo','To research'),('doing','In progress'),('done','Mark done')] if st!=item.status %}<form method="post" action="{{url_for('research_status',rid=item.id,status=st)}}"><button class="btn sec sm">{{l}}</button></form>{% endfor %}</div></div>
+
+<div class="hero">
+  <div>
+    {% if item.decision %}<div class="decision" style="margin-bottom:14px"><h3>Decision / outcome</h3><pre>{{item.decision}}</pre></div>{% endif %}
+    {% if item.details %}<div class="card"><h3 style="font-size:13px;color:var(--muted);margin-bottom:6px">Why / context</h3><pre>{{item.details}}</pre></div>{% endif %}
+  </div>
+  <details class="card"><summary style="font-weight:600">Edit item & decision</summary>
+    <form method="post" action="{{url_for('research_update',rid=item.id)}}" style="margin-top:6px">
+      <label>Title</label><input name="title" value="{{item.title}}" required>
+      <label>Why / context</label><textarea name="details" style="min-height:60px">{{item.details or ''}}</textarea>
+      <label>Decision / outcome (what you concluded)</label><textarea name="decision" style="min-height:60px" placeholder="e.g. Go with hall-effect anemometer: cheaper, fewer moving parts, 2% error acceptable.">{{item.decision or ''}}</textarea>
+      <div class="grid g2"><div><label>Owner</label><select name="owner">{% for u in users %}<option {% if u==item.owner %}selected{% endif %}>{{u}}</option>{% endfor %}</select></div>
+      <div><label>Priority</label><select name="priority">{% for p in ['high','medium','low'] %}<option {% if p==item.priority %}selected{% endif %}>{{p}}</option>{% endfor %}</select></div>
+      <div><label>Status</label><select name="status">{% for st,l in [('todo','to research'),('doing','in progress'),('done','done')] %}<option value="{{st}}" {% if st==item.status %}selected{% endif %}>{{l}}</option>{% endfor %}</select></div>
+      <div><label>Target date</label><input name="due" type="date" value="{{item.due or ''}}"></div></div>
+      <br><button>Save</button>
+    </form></details>
+</div>
+
+<div class="card" style="padding-bottom:0">
+  <h3 style="margin-bottom:4px">Research log</h3><div class="muted" style="margin-bottom:6px">{{log|length + legacy|length}} entries, newest first. Every note, file, voice and video is stamped with who and when.</div>
+  {% for e in log %}<div class="entry"><div class="when"><b>{{e.ts[:10]}}</b>{{e.ts[11:]}}</div><div class="c">
+    <div class="by"><b>{{e.author}}</b>{% if e.kind!='note' %}<span class="kind">{{ {'voice':'🎤 voice note','video':'🎥 video note','image':'🖼 image','file':'📎 file'}.get(e.kind,e.kind) }}</span>{% endif %}
+    {% if e.author==user %}<form method="post" action="{{url_for('research_log_delete',rid=item.id,lid=e.id)}}" style="display:inline" onsubmit="return confirm('Delete this entry?')"><button class="del" style="background:none;border:0;padding:0;min-height:0">delete</button></form>{% endif %}</div>
+    {% if e.body %}<pre>{{e.body}}</pre>{% endif %}
+    {% if e.filename %}{% set u=url_for('uploaded',fn=e.filename) %}
+      {% if e.kind=='voice' %}<audio controls preload="metadata" src="{{u}}"></audio>
+      {% elif e.kind=='video' %}<video controls preload="metadata" src="{{u}}"></video>
+      {% elif e.kind=='image' %}<a href="{{u}}" target="_blank"><img src="{{u}}"></a>
+      {% else %}<a class="btn sec sm" href="{{u}}" style="margin-top:6px">📎 {{e.orig_name}}</a>{% endif %}{% endif %}
+  </div></div>{% endfor %}
+  {% for f in legacy %}<div class="entry"><div class="when"><b>{{f.ts[:10]}}</b>{{f.ts[11:]}}</div><div class="c"><div class="by"><b>{{f.uploaded_by}}</b><span class="kind">📎 file</span></div>
+    {% if f.filename|is_image %}<a href="{{url_for('uploaded',fn=f.filename)}}" target="_blank"><img src="{{url_for('uploaded',fn=f.filename)}}"></a>{% else %}<a class="btn sec sm" href="{{url_for('uploaded',fn=f.filename)}}">📎 {{f.orig_name}}</a>{% endif %}</div></div>{% endfor %}
+  {% if not log and not legacy %}<div class="empty"><b>No entries yet</b>Write what you found, attach a datasheet, or record a quick voice or video note.</div>{% endif %}
+
+  <form class="composer" id="lf" method="post" action="{{url_for('research_log',rid=item.id)}}" enctype="multipart/form-data">
+    <textarea name="body" id="body" placeholder="Add a finding, measurement, link or thought…"></textarea>
+    <input type="hidden" name="kind" id="kind" value="note">
+    <div id="preview"><span id="pvlabel" class="muted"></span><span id="pvmedia"></span><button type="button" class="btn sec sm" onclick="discard()">Discard</button></div>
+    <div class="rbar">
+      <label class="btn sec sm" style="margin:0;cursor:pointer">📎 Attach file / image<input type="file" name="file" id="file" style="display:none" onchange="picked()"></label>
+      <button type="button" class="btn sec sm recbtn" id="recA" onclick="toggleRec('voice')">🎤 Record voice</button>
+      <button type="button" class="btn sec sm recbtn" id="recV" onclick="toggleRec('video')">🎥 Record video</button>
+      <span id="rtime" class="muted"></span>
+      <div style="flex:1"></div><button id="save">Add to log</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const $=id=>document.getElementById(id);let rec,chunks=[],blob=null,recKind=null,stream=null,timer=null,t0=0;
+function picked(){const f=$('file').files[0];if(!f)return;blob=null;$('kind').value='note';$('pvlabel').textContent='Attached: '+f.name;$('pvmedia').innerHTML='';$('preview').classList.add('on');}
+function discard(){blob=null;$('file').value='';$('kind').value='note';$('preview').classList.remove('on');$('pvmedia').innerHTML='';}
+async function toggleRec(k){
+ if(rec&&rec.state==='recording'){rec.stop();return;}
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return alert('Recording needs https:// (or localhost).');
+ try{stream=await navigator.mediaDevices.getUserMedia(k==='video'?{audio:true,video:{width:{ideal:640}}}:{audio:true});}
+ catch(e){return alert('Could not access '+(k==='video'?'camera':'microphone')+': '+(/NotAllowed/i.test(e.name)?'permission blocked — allow it in the address bar and retry.':e.message));}
+ recKind=k;chunks=[];const mime=(k==='video'?['video/webm;codecs=vp8,opus','video/webm','video/mp4']:['audio/webm;codecs=opus','audio/webm','audio/mp4']).find(m=>MediaRecorder.isTypeSupported(m))||'';
+ rec=new MediaRecorder(stream,mime?{mimeType:mime}:{});rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+ rec.onstop=()=>{stream.getTracks().forEach(t=>t.stop());clearInterval(timer);$('rtime').textContent='';$('recA').classList.remove('on');$('recV').classList.remove('on');$('recA').textContent='🎤 Record voice';$('recV').textContent='🎥 Record video';
+   blob=new Blob(chunks,{type:rec.mimeType||(k==='video'?'video/webm':'audio/webm')});$('kind').value=k;$('file').value='';
+   const el=document.createElement(k==='video'?'video':'audio');el.controls=true;el.src=URL.createObjectURL(blob);$('pvmedia').innerHTML='';$('pvmedia').appendChild(el);
+   $('pvlabel').textContent=(k==='video'?'Video':'Voice')+' note ready ('+Math.round(blob.size/1024)+' KB)';$('preview').classList.add('on');};
+ rec.start(1000);const b=$(k==='video'?'recV':'recA');b.classList.add('on');b.textContent='■ Stop';t0=Date.now();
+ if(k==='video'){const v=document.createElement('video');v.muted=true;v.autoplay=true;v.playsInline=true;v.srcObject=stream;$('pvmedia').innerHTML='';$('pvmedia').appendChild(v);$('pvlabel').textContent='Recording video…';$('preview').classList.add('on');}
+ timer=setInterval(()=>{const s=Math.floor((Date.now()-t0)/1000);$('rtime').textContent=`● ${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;},500);}
+$('lf').onsubmit=async e=>{
+ if(rec&&rec.state==='recording'){e.preventDefault();rec.stop();alert('Recording stopped — click "Add to log" again to save it.');return;}
+ if(!blob)return; // normal form submit for text/file
+ e.preventDefault();$('save').disabled=true;$('save').textContent='Uploading…';
+ const fd=new FormData();fd.append('body',$('body').value);fd.append('kind',recKind);fd.append('file',blob,(recKind==='video'?'video_':'voice_')+Date.now()+(blob.type.includes('mp4')?'.mp4':'.webm'));
+ const r=await fetch($('lf').action,{method:'POST',body:fd,headers:{'X-Requested-With':'fetch'}});
+ if(r.ok)location.reload();else{alert('Upload failed');$('save').disabled=false;$('save').textContent='Add to log';}};
+</script>
+{% endblock %}

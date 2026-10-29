@@ -1,0 +1,148 @@
+{% extends "base.html" %}{% block title %}{{t.title}} · Rainflow{% endblock %}
+{% block pagetitle %}Task{% endblock %}
+{% block head %}<style>
+.layout{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+.side .card{padding:14px 16px}.side h3{font-size:12.5px;color:var(--muted);margin-bottom:8px}
+.kv{display:grid;grid-template-columns:96px 1fr;gap:6px 10px;font-size:13.5px}.kv .k{color:var(--muted)}
+.decision{background:var(--teal-soft);border:1px solid #bfe8df;border-radius:var(--r-lg);padding:12px 16px;margin-bottom:14px}.decision h3{color:#0b7a6b;font-size:12.5px;margin-bottom:4px}
+.lbl{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:2px 9px;border-radius:999px;background:var(--surface2)}.lbl i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.chk{list-style:none;margin:0;padding:0}.chk li{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)}.chk li:last-child{border:0}.chk li.done span{text-decoration:line-through;color:var(--muted)}
+.chk button{background:none;border:0;padding:0;min-height:0;color:var(--muted);font-size:12px}
+.chk .box{width:18px;height:18px;border:1.6px solid var(--line2);border-radius:5px;display:inline-grid;place-items:center;color:#fff;font-size:12px;cursor:pointer;flex-shrink:0}.done .box{background:var(--teal);border-color:var(--teal)}
+.subs .li{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}.subs .li:last-child{border:0}
+.entry{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}.entry:last-child{border-bottom:0}
+.entry .when{width:88px;flex-shrink:0;font-size:12px;color:var(--muted);line-height:1.4;padding-top:2px}.entry .when b{display:block;color:var(--ink2);font-weight:600;font-size:12.5px}
+.entry .c{flex:1;min-width:0}.entry .by{font-size:12.5px;color:var(--muted);margin-bottom:3px}.entry .by b{color:var(--ink)}
+.entry .kind{font-size:11.5px;color:var(--blue2);background:var(--blue-soft);padding:1px 8px;border-radius:999px;margin-left:6px}
+.entry img{max-width:100%;max-height:320px;border-radius:10px;display:block;margin-top:6px}.entry video{max-width:100%;width:420px;border-radius:10px;background:#000;margin-top:6px}.entry audio{width:100%;max-width:420px;margin-top:6px}
+.entry .del{opacity:0;background:none;border:0;padding:0;min-height:0;font-size:12px;color:var(--muted);margin-left:8px}.entry:hover .del{opacity:1}
+.entry .mention{color:var(--blue2);font-weight:600}
+.composer{background:var(--surface2);border-radius:12px;padding:12px;margin-top:10px}.composer textarea{min-height:56px;background:#fff}
+.rbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}.recbtn.on{background:var(--red)!important;border-color:var(--red)!important;color:#fff!important}
+#preview{display:none;margin-top:8px;align-items:center;gap:10px;background:#fff;padding:8px 10px;border-radius:var(--r)}#preview.on{display:flex}#preview video,#preview audio{max-width:220px;border-radius:8px}
+.bar{margin-top:6px}
+@media(max-width:860px){.layout{grid-template-columns:1fr}.entry{flex-direction:column;gap:4px}.entry .when{width:auto;display:flex;gap:6px}.entry .when b{display:inline}.entry .del{opacity:1}}
+</style>{% endblock %}
+{% block body %}
+<div class="ph"><div><a href="{{url_for('pm.board')}}" class="muted">← Board</a>{% if parent %} <span class="muted">/ <a href="{{url_for('pm.task_item',tid=parent.id)}}">{{parent.title}}</a></span>{% endif %}
+  <h1 style="margin-top:4px">{{t.title}}</h1>
+  <div class="sub"><span class="tag {{ 'ok' if t.status=='done' else 'info' if t.status in ('doing','review') else '' }}">{{ dict(STATUSES)[t.status] }}</span> <span class="tag {{ 'bad' if t.priority=='high' else 'warn' if t.priority=='medium' else '' }}">{{t.priority}}</span> <span class="tag">{{t.type}}</span>{% for l in t.labels.split(',') if l %} <span class="lbl"><i style="background:{{labels.get(l,'#999')}}"></i>{{l}}</span>{% endfor %}
+  {% if t.due %} · due <b style="{{ 'color:#b43232' if t.status!='done' and t.due<today }}">{{t.due}}</b>{% endif %} · #{{t.id}}</div></div>
+<div class="actions">{% for st,l in STATUSES if st!=t.status %}<form method="post" action="{{url_for('pm.task_status',tid=t.id,status=st)}}"><button class="btn sec sm">→ {{l}}</button></form>{% endfor %}</div></div>
+
+<div class="layout">
+<div>
+  {% if t.decision %}<div class="decision"><h3>Decision / outcome</h3><pre>{{t.decision}}</pre></div>{% endif %}
+  {% if t.description %}<div class="card"><h3 style="font-size:12.5px;color:var(--muted);margin-bottom:6px">Description</h3><pre>{{t.description}}</pre></div>{% endif %}
+
+  <div class="card">
+    <div class="row" style="margin-bottom:6px"><h3>Checklist</h3>{% if checks %}<span class="muted">{{ checks|selectattr('done')|list|length }}/{{checks|length}}</span>{% endif %}</div>
+    {% if checks %}<div class="bar ok" style="margin-bottom:8px"><i style="width:{{ 100*(checks|selectattr('done')|list|length)/(checks|length) }}%"></i></div>{% endif %}
+    <ul class="chk">{% for c in checks %}<li class="{{ 'done' if c.done }}"><form method="post" action="{{url_for('pm.task_check',tid=t.id)}}"><button name="toggle" value="{{c.id}}" class="box">{{ '✓' if c.done }}</button></form><span style="flex:1">{{c.text}}</span><form method="post" action="{{url_for('pm.task_check',tid=t.id)}}"><button name="remove" value="{{c.id}}" title="remove">✕</button></form></li>{% endfor %}</ul>
+    <form method="post" action="{{url_for('pm.task_check',tid=t.id)}}" class="row" style="margin-top:6px"><input name="text" placeholder="Add a checklist item" required style="flex:1"><button class="sec sm">Add</button></form>
+  </div>
+
+  <div class="card subs">
+    <div class="row" style="margin-bottom:6px"><h3>Subtasks</h3>{% if subs %}<span class="muted">{{ subs|selectattr('status','equalto','done')|list|length }}/{{subs|length}}</span>{% endif %}</div>
+    {% for s in subs %}<div class="li"><span class="tag {{ 'ok' if s.status=='done' else 'info' if s.status=='doing' else '' }}" style="padding:1px 7px">{{ dict(STATUSES)[s.status] }}</span><a href="{{url_for('pm.task_item',tid=s.id)}}" style="flex:1;color:var(--ink);{{ 'text-decoration:line-through;color:var(--muted)' if s.status=='done' }}">{{s.title}}</a>{% if s.assignee %}<span class="muted">{{s.assignee}}</span>{% endif %}{% if s.due %}<span class="muted">{{s.due[5:]}}</span>{% endif %}</div>{% endfor %}
+    <form method="post" action="{{url_for('pm.task_new')}}" class="row" style="margin-top:6px"><input type="hidden" name="parent_id" value="{{t.id}}"><input type="hidden" name="next" value="{{url_for('pm.task_item',tid=t.id)}}"><input name="title" placeholder="Add a subtask" required style="flex:1"><select name="assignee" style="width:auto"><option value="">Unassigned</option>{% for u in users %}<option>{{u}}</option>{% endfor %}</select><button class="sec sm">Add</button></form>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:2px">Log</h3><div class="muted" style="margin-bottom:4px">{{comments|length}} entries, newest first — notes, files, images, voice and video, each stamped with who and when.</div>
+    {% for e in comments %}<div class="entry"><div class="when"><b>{{e.ts[:10]}}</b>{{e.ts[11:]}}</div><div class="c">
+      <div class="by"><b>{{e.author}}</b>{% if e.kind!='note' %}<span class="kind">{{ {'voice':'🎤 voice','video':'🎥 video','image':'🖼 image','file':'📎 file'}.get(e.kind,e.kind) }}</span>{% endif %}
+      {% if e.author==user %}<form method="post" action="{{url_for('pm.task_comment_delete',tid=t.id,cid=e.id)}}" style="display:inline" onsubmit="return confirm('Delete this entry?')"><button class="del">delete</button></form>{% endif %}</div>
+      {% if e.body %}<pre class="body">{{e.body}}</pre>{% endif %}
+      {% if e.filename %}{% set u=url_for('uploaded',fn=e.filename) %}{% if e.kind=='voice' %}<audio controls preload="metadata" src="{{u}}"></audio>{% elif e.kind=='video' %}<video controls preload="metadata" src="{{u}}"></video>{% elif e.kind=='image' %}<a href="{{u}}" target="_blank"><img src="{{u}}"></a>{% else %}<a class="btn sec sm" href="{{u}}" style="margin-top:6px">📎 {{e.orig_name}}</a>{% endif %}{% endif %}
+    </div></div>{% else %}<div class="empty" style="padding:20px"><b>No entries yet</b>Write a finding, attach a file, or record a voice or video note.</div>{% endfor %}
+
+    <form class="composer" id="lf" method="post" action="{{url_for('pm.task_comment',tid=t.id)}}" enctype="multipart/form-data">
+      <textarea name="body" id="body" placeholder="Add a note… use @name to mention someone" list="members"></textarea>
+      <input type="hidden" name="kind" id="kind" value="note">
+      <div id="preview"><span id="pvlabel" class="muted"></span><span id="pvmedia"></span><button type="button" class="btn sec sm" onclick="discard()">Discard</button></div>
+      <div class="rbar">
+        <label class="btn sec sm" style="margin:0;cursor:pointer">📎 File / image<input type="file" name="file" id="file" style="display:none" onchange="picked()"></label>
+        <button type="button" class="btn sec sm recbtn" id="recA" onclick="toggleRec('voice')">🎤 Voice note</button>
+        <button type="button" class="btn sec sm recbtn" id="recV" onclick="toggleRec('video')">🎥 Video note</button>
+        <span id="rtime" class="muted"></span><div style="flex:1"></div><button id="save">Add to log</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="side">
+  <div class="card"><h3>Details</h3><div class="kv">
+    <span class="k">Assignee</span><span>{% if t.assignee %}<span class="avatar av{{ (t.assignee|length % 3)+1 }}" style="width:20px;height:20px;font-size:10px">{{t.assignee[0]|upper}}</span> {{t.assignee}}{% else %}<span class="muted">unassigned</span>{% endif %}</span>
+    <span class="k">Start</span><span>{{t.start or '—'}}</span><span class="k">Due</span><span>{{t.due or '—'}}</span>
+    <span class="k">Estimate</span><span>{{ (t.estimate_h ~ ' h') if t.estimate_h else '—' }}</span>
+    <span class="k">Logged</span><span class="num">{{ '%.1f'|format(spent/60) }} h{% if t.estimate_h %} <span class="muted">of {{t.estimate_h}}</span>{% endif %}</span>
+    {% if t.estimate_h %}<span></span><div class="bar {{ 'warn' if spent/60 > t.estimate_h else 'ok' }}"><i style="width:{{ [100, 100*spent/60/t.estimate_h]|min }}%"></i></div>{% endif %}
+    <span class="k">Created</span><span>{{t.created_by}} · {{t.ts}}</span>{% if t.done_ts %}<span class="k">Done</span><span>{{t.done_ts}}</span>{% endif %}
+    {% if link.milestone %}<span class="k">Milestone</span><a href="{{url_for('milestones')}}">◆ {{link.milestone.title}}</a>{% endif %}
+    {% if link.hardware %}<span class="k">Hardware</span><a href="{{url_for('hardware_item',hid=link.hardware.id)}}">{{link.hardware.name}}</a>{% endif %}
+    {% if link.firmware %}<span class="k">Firmware</span><a href="{{url_for('firmware')}}">{{link.firmware.version}}</a>{% endif %}
+  </div></div>
+
+  <div class="card"><h3>Log time</h3>
+    <form method="post" action="{{url_for('pm.task_time',tid=t.id)}}" class="row" style="gap:6px"><input name="hours" type="number" step="0.25" min="0" placeholder="h" style="width:64px"><input name="minutes" type="number" min="0" max="59" placeholder="min" style="width:64px"><input name="note" placeholder="what you did" style="flex:1;min-width:100px"><button class="sm">Log</button></form>
+    {% for x in time %}<div class="row" style="font-size:12.5px;padding:5px 0;border-top:1px solid var(--line)"><b>{{x.username}}</b> {{ '%.1f'|format(x.minutes/60) }} h <span class="muted" style="flex:1">{{x.note}}</span><span class="muted">{{x.ts[5:]}}</span>{% if x.username==user %}<form method="post" action="{{url_for('pm.task_time',tid=t.id)}}"><button name="remove" value="{{x.id}}" style="background:none;border:0;padding:0;min-height:0;color:var(--muted)">✕</button></form>{% endif %}</div>{% endfor %}
+  </div>
+
+  <div class="card"><h3>Dependencies</h3>
+    {% for d in deps %}<div class="row" style="padding:4px 0;font-size:13px"><span class="tag {{ 'ok' if d.status=='done' else 'warn' }}" style="padding:1px 7px">{{ 'done' if d.status=='done' else 'waiting' }}</span><a href="{{url_for('pm.task_item',tid=d.id)}}" style="flex:1">{{d.title}}</a><form method="post" action="{{url_for('pm.task_dep',tid=t.id)}}"><button name="remove" value="{{d.id}}" style="background:none;border:0;padding:0;min-height:0;color:var(--muted)">✕</button></form></div>{% else %}<div class="muted">Nothing blocks this task.</div>{% endfor %}
+    <form method="post" action="{{url_for('pm.task_dep',tid=t.id)}}" class="row" style="margin-top:6px;gap:6px"><select name="add" style="flex:1"><option value="">Blocked by…</option>{% for o in others %}<option value="{{o.id}}">#{{o.id}} {{o.title[:40]}}</option>{% endfor %}</select><button class="sec sm">Add</button></form>
+    {% if blocks %}<div class="muted" style="margin-top:8px">Blocks: {% for b in blocks %}<a href="{{url_for('pm.task_item',tid=b.id)}}">{{b.title}}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+  </div>
+
+  <details class="card"><summary style="font-weight:600;font-size:13.5px">Edit task</summary>
+    <form method="post" action="{{url_for('pm.task_update',tid=t.id)}}" style="margin-top:6px">
+      <label>Title</label><input name="title" value="{{t.title}}" required>
+      <label>Description</label><textarea name="description" style="min-height:70px">{{t.description or ''}}</textarea>
+      <label>Decision / outcome</label><textarea name="decision" style="min-height:50px" placeholder="What was concluded">{{t.decision or ''}}</textarea>
+      <div class="grid g2" style="gap:8px">
+        <div><label>Type</label><select name="type">{% for ty in TYPES %}<option {% if ty==t.type %}selected{% endif %}>{{ty}}</option>{% endfor %}</select></div>
+        <div><label>Status</label><select name="status">{% for st,l in STATUSES %}<option value="{{st}}" {% if st==t.status %}selected{% endif %}>{{l}}</option>{% endfor %}</select></div>
+        <div><label>Assignee</label><select name="assignee"><option value="">Unassigned</option>{% for u in users %}<option {% if u==t.assignee %}selected{% endif %}>{{u}}</option>{% endfor %}</select></div>
+        <div><label>Priority</label><select name="priority">{% for p in ['high','medium','low'] %}<option {% if p==t.priority %}selected{% endif %}>{{p}}</option>{% endfor %}</select></div>
+        <div><label>Start</label><input name="start" type="date" value="{{t.start or ''}}"></div><div><label>Due</label><input name="due" type="date" value="{{t.due or ''}}"></div>
+        <div><label>Estimate (hours)</label><input name="estimate_h" type="number" step="0.5" value="{{t.estimate_h or ''}}"></div>
+        <div><label>Labels (comma separated)</label><input name="labels" value="{{t.labels}}" list="lbls" placeholder="sensor, pcb"><datalist id="lbls">{% for l in labels %}<option value="{{l}}">{% endfor %}</datalist></div>
+        <div><label>Milestone</label><select name="milestone_id"><option value="">—</option>{% for m in ms %}<option value="{{m.id}}" {% if m.id==t.milestone_id %}selected{% endif %}>{{m.title}}</option>{% endfor %}</select></div>
+        <div><label>Hardware</label><select name="hardware_id"><option value="">—</option>{% for h in hw %}<option value="{{h.id}}" {% if h.id==t.hardware_id %}selected{% endif %}>{{h.name}}</option>{% endfor %}</select></div>
+        <div><label>Firmware</label><select name="firmware_id"><option value="">—</option>{% for f in fw %}<option value="{{f.id}}" {% if f.id==t.firmware_id %}selected{% endif %}>{{f.version}}</option>{% endfor %}</select></div>
+      </div><br><div class="row"><button>Save</button></div></form>
+    <form method="post" action="{{url_for('pm.task_delete',tid=t.id)}}" onsubmit="return confirm('Delete this task and its log?')" style="margin-top:10px"><button class="btn danger sm">Delete task</button></form>
+  </details>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll('.entry .body').forEach(el=>{const t=el.textContent;el.innerHTML='';t.split(/(@\w+)/g).forEach(p=>{if(/^@\w+$/.test(p)){const s=document.createElement('span');s.className='mention';s.textContent=p;el.appendChild(s);}else el.append(p);});});
+const $=id=>document.getElementById(id);let rec,chunks=[],blob=null,recKind=null,stream=null,timer=null,t0=0;
+function picked(){const f=$('file').files[0];if(!f)return;blob=null;$('kind').value='note';$('pvlabel').textContent='Attached: '+f.name;$('pvmedia').innerHTML='';$('preview').classList.add('on');}
+function discard(){blob=null;$('file').value='';$('kind').value='note';$('preview').classList.remove('on');$('pvmedia').innerHTML='';}
+async function toggleRec(k){
+ if(rec&&rec.state==='recording'){rec.stop();return;}
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return alert('Recording needs https:// (or localhost).');
+ try{stream=await navigator.mediaDevices.getUserMedia(k==='video'?{audio:true,video:{width:{ideal:640}}}:{audio:true});}
+ catch(e){return alert('Could not access '+(k==='video'?'camera':'microphone')+': '+(/NotAllowed/i.test(e.name)?'permission blocked — allow it in the address bar and retry.':e.message));}
+ recKind=k;chunks=[];const mime=(k==='video'?['video/webm;codecs=vp8,opus','video/webm','video/mp4']:['audio/webm;codecs=opus','audio/webm','audio/mp4']).find(m=>MediaRecorder.isTypeSupported(m))||'';
+ rec=new MediaRecorder(stream,mime?{mimeType:mime}:{});rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+ rec.onstop=()=>{stream.getTracks().forEach(t=>t.stop());clearInterval(timer);$('rtime').textContent='';$('recA').classList.remove('on');$('recV').classList.remove('on');$('recA').textContent='🎤 Voice note';$('recV').textContent='🎥 Video note';
+   blob=new Blob(chunks,{type:rec.mimeType||(k==='video'?'video/webm':'audio/webm')});$('kind').value=k;$('file').value='';
+   const el=document.createElement(k==='video'?'video':'audio');el.controls=true;el.src=URL.createObjectURL(blob);$('pvmedia').innerHTML='';$('pvmedia').appendChild(el);
+   $('pvlabel').textContent=(k==='video'?'Video':'Voice')+' note ready ('+Math.round(blob.size/1024)+' KB)';$('preview').classList.add('on');};
+ rec.start(1000);const b=$(k==='video'?'recV':'recA');b.classList.add('on');b.textContent='■ Stop';t0=Date.now();
+ if(k==='video'){const v=document.createElement('video');v.muted=true;v.autoplay=true;v.playsInline=true;v.srcObject=stream;$('pvmedia').innerHTML='';$('pvmedia').appendChild(v);$('pvlabel').textContent='Recording video…';$('preview').classList.add('on');}
+ timer=setInterval(()=>{const s=Math.floor((Date.now()-t0)/1000);$('rtime').textContent=`● ${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;},500);}
+$('lf').onsubmit=async e=>{
+ if(rec&&rec.state==='recording'){e.preventDefault();rec.stop();alert('Recording stopped — click "Add to log" again to save it.');return;}
+ if(!blob)return;
+ e.preventDefault();$('save').disabled=true;$('save').textContent='Uploading…';
+ const fd=new FormData();fd.append('body',$('body').value);fd.append('kind',recKind);fd.append('file',blob,(recKind==='video'?'video_':'voice_')+Date.now()+(blob.type.includes('mp4')?'.mp4':'.webm'));
+ const r=await fetch($('lf').action,{method:'POST',body:fd,headers:{'X-Requested-With':'fetch'}});
+ if(r.ok)location.reload();else{alert('Upload failed');$('save').disabled=false;$('save').textContent='Add to log';}};
+</script>
+{% endblock %}

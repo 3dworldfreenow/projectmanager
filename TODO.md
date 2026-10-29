@@ -19,13 +19,18 @@
 - [ ] Image paste from clipboard, drag-and-drop upload.
 - [ ] Read receipts per member (who has seen a message).
 
+## Project management (next)
+- [ ] Drag-and-drop on touch screens (currently long-press → prompt on mobile).
+- [ ] Gantt: drag bars to change dates; critical path.
+- [ ] Recurring tasks, task templates (e.g. "new sensor bring-up" checklist).
+- [ ] Per-project membership / client (read-only) role.
+- [ ] Weekly digest email (cron: `curl $APP_URL/reports/pdf`).
+
 ## Project pages
 - [ ] Hardware: barcode/QR label per part, order tracking (order date → ETA → received).
 - [ ] Tests: test templates / checklists, charts of results over firmware versions.
 - [ ] Firmware: diff of release notes between versions, OTA update endpoint for the ESP32.
 - [ ] Milestones: invoice numbering per payee, GST field, payment reminders.
-- [ ] Research: links list, "decision made" field, Kanban drag-and-drop.
-- [ ] Gantt / timeline view of milestones and research tasks.
 
 ## Weather station specific
 - [ ] Live sensor data page (ESP32 → MQTT/HTTP → SQLite → chart).

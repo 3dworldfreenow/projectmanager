@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% block title %}Timeline · Rainflow{% endblock %}
+{% block pagetitle %}Timeline{% endblock %}
+{% block head %}<style>
+main{max-width:none}
+.gantt{display:grid;grid-template-columns:260px 1fr;border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--surface)}
+.names{border-right:1px solid var(--line)}.names .r,.hdr{height:38px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid var(--line);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.names .r a{color:var(--ink);font-weight:500;overflow:hidden;text-overflow:ellipsis}.names .r .av{width:20px;height:20px;font-size:10px;margin-right:8px;flex-shrink:0}
+.hdr{background:var(--surface2);color:var(--muted);font-weight:600;font-size:12px}
+.scroll{overflow-x:auto}.chart{position:relative;min-width:100%}
+.chart svg{display:block}
+.bar{rx:5}.bar.todo,.bar.backlog{fill:#c9d4e3}.bar.doing{fill:var(--blue)}.bar.review{fill:#7f6bd0}.bar.done{fill:var(--teal)}.bar.over{fill:var(--red)}
+.gl{stroke:var(--line);stroke-width:1}.wk{fill:var(--muted);font-size:11px}.td{stroke:var(--red);stroke-width:1.5;stroke-dasharray:4 3}
+.ms{fill:var(--amber)}.mst{font-size:11px;fill:#7a5407}
+.dep{stroke:#8a96a8;stroke-width:1.2;fill:none;marker-end:url(#arr)}
+.lbl{font-size:11.5px;fill:#fff;font-weight:600}.lbl.dark{fill:var(--ink2)}
+.leg{display:flex;gap:14px;font-size:12.5px;color:var(--muted);margin-top:10px;flex-wrap:wrap}.leg i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px}
+@media(max-width:860px){.gantt{grid-template-columns:150px 1fr}}
+</style>{% endblock %}
+{% block body %}
+{% set DAY=22 %}{% set RH=38 %}{% set H=RH*(rows|length)+(RH if ms else 0) %}
+<div class="ph"><div><h1>Timeline</h1><div class="sub">{{rows|length}} tasks · bars run from start to due date · arrows show what blocks what</div></div>
+<div class="actions"><a class="btn sec" href="{{url_for('pm.board')}}">Board</a><a class="btn sec" href="{{url_for('pm.calendar_view')}}">Calendar</a></div></div>
+{% if rows %}
+<div class="gantt">
+  <div class="names"><div class="hdr">Task</div>{% for r in rows %}<div class="r">{% if r.assignee %}<span class="avatar av{{ (r.assignee|length % 3)+1 }} av" title="{{r.assignee}}">{{r.assignee[0]|upper}}</span>{% endif %}<a href="{{url_for('pm.task_item',tid=r.id)}}" title="{{r.title}} · {{r.start}} → {{r.due}}">{{r.title}}</a></div>{% endfor %}{% if ms %}<div class="r" style="color:var(--muted)">◆ Milestones</div>{% endif %}</div>
+  <div class="scroll"><div class="chart" style="width:{{days*DAY}}px">
+    <svg width="{{days*DAY}}" height="{{H+RH}}">
+      <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#8a96a8"/></marker></defs>
+      <rect width="{{days*DAY}}" height="{{RH}}" fill="#f1f4f8"/>
+      {% for w in weeks %}<line class="gl" x1="{{w.x*DAY}}" y1="0" x2="{{w.x*DAY}}" y2="{{H+RH}}"/><text class="wk" x="{{w.x*DAY+4}}" y="24">{{w.label}}</text>{% endfor %}
+      {% for r in rows %}<line class="gl" x1="0" y1="{{RH*(loop.index)+RH}}" x2="{{days*DAY}}" y2="{{RH*(loop.index)+RH}}"/>{% endfor %}
+      <line class="td" x1="{{today_x*DAY+DAY/2}}" y1="{{RH}}" x2="{{today_x*DAY+DAY/2}}" y2="{{H+RH}}"/><text class="wk" x="{{today_x*DAY+DAY/2+4}}" y="{{RH+12}}" fill="#b43232">today</text>
+      {% for a,b in arrows %}{% set ra=rows[a] %}{% set rb=rows[b] %}<path class="dep" d="M{{ra.e*DAY}} {{RH*(a+1)+RH/2}} C{{ra.e*DAY+14}} {{RH*(a+1)+RH/2}} {{rb.s*DAY-14}} {{RH*(b+1)+RH/2}} {{rb.s*DAY-2}} {{RH*(b+1)+RH/2}}"/>{% endfor %}
+      {% for r in rows %}{% set y=RH*(loop.index)+9 %}<a href="{{url_for('pm.task_item',tid=r.id)}}"><rect class="bar {{ 'over' if r.overdue else r.status }}" x="{{r.s*DAY}}" y="{{y}}" width="{{ [(r.e-r.s)*DAY-2, 6]|max }}" height="{{RH-18}}"><title>{{r.title}} · {{r.start}} → {{r.due}}</title></rect>
+        {% if (r.e-r.s)*DAY > 60 %}<text class="lbl {{ 'dark' if r.status in ('todo','backlog') }}" x="{{r.s*DAY+6}}" y="{{y+14}}">{{r.title[:((r.e-r.s)*DAY//8)]}}</text>{% endif %}</a>{% endfor %}
+      {% for m in ms %}{% set y=RH*(rows|length+1)+RH/2 %}<polygon class="ms" points="{{m.x*DAY+DAY/2}},{{y-8}} {{m.x*DAY+DAY/2+8}},{{y}} {{m.x*DAY+DAY/2}},{{y+8}} {{m.x*DAY+DAY/2-8}},{{y}}"><title>{{m.title}}</title></polygon><text class="mst" x="{{m.x*DAY+DAY/2+11}}" y="{{y+4}}">{{m.title[:22]}}</text>{% endfor %}
+    </svg></div></div>
+</div>
+<div class="leg"><span><i style="background:#c9d4e3"></i>to do</span><span><i style="background:var(--blue)"></i>in progress</span><span><i style="background:#7f6bd0"></i>review</span><span><i style="background:var(--teal)"></i>done</span><span><i style="background:var(--red)"></i>overdue</span><span><i style="background:var(--amber);transform:rotate(45deg)"></i>milestone</span></div>
+{% else %}<div class="card empty"><b>No tasks with dates yet</b>Give tasks a start and due date on the board and they appear here.</div>{% endif %}
+{% endblock %}

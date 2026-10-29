@@ -29,7 +29,7 @@
     {{ ring(pulse.tests, 'tests passing', (pulse.tests ~ '%') if pulse.tests is not none else '—') }}
     {{ ring(pulse.milestones, 'milestones done', pulse.ms_done ~ ' / ' ~ pulse.ms_total) }}
     {{ ring(pulse.paid, 'of ₹' ~ '%.0f'|format(pulse.amt_total) ~ ' paid', '₹' ~ '%.0f'|format(pulse.amt_paid)) }}
-    {{ ring(pulse.research, 'research done', stats.research_done ~ ' / ' ~ (stats.research_done + stats.research_open)) }}
+    {{ ring(pulse.research, 'tasks done', stats.research_done ~ ' / ' ~ (stats.research_done + stats.research_open)) }}
   </div>
   <div class="chips">
     <span class="chip">💬 {{stats.messages}} messages</span><span class="chip">📞 {{stats.calls}} calls</span><span class="chip">🔧 {{stats.hardware}} parts</span>
@@ -41,10 +41,10 @@
 
 <div class="grid g2">
   <div>
-    <div class="card"><div class="row" style="margin-bottom:12px"><h3>Open research & tasks</h3><a class="btn sec sm" style="margin-left:auto" href="{{url_for('research')}}">View all</a></div>
-      <div class="list">{% for t in tasks %}<div class="li"><div class="t"><b>{{t.title}}</b><div class="s">{{t.owner}}{% if t.due %} · due {{t.due}}{% endif %}</div></div>
+    <div class="card"><div class="row" style="margin-bottom:12px"><h3>Open tasks</h3><a class="btn sec sm" style="margin-left:auto" href="{{url_for('pm.board')}}">Board</a><a class="btn sec sm" href="{{url_for('pm.calendar_view')}}">Calendar</a></div>
+      <div class="list">{% for t in tasks %}<div class="li"><div class="t"><b><a href="{{url_for('pm.task_item',tid=t.id)}}" style="color:var(--ink)">{{t.title}}</a></b><div class="s">{{t.owner or 'unassigned'}}{% if t.due %} · due <span style="{{ 'color:#b43232;font-weight:600' if t.due<today }}">{{t.due}}</span>{% endif %} · {{ dict(STATUSES)[t.status] }}</div></div>
       <span class="tag {{ 'bad' if t.priority=='high' else 'warn' if t.priority=='medium' else '' }}">{{t.priority}}</span></div>
-      {% else %}<div class="empty"><b>No open tasks</b><a href="{{url_for('research')}}">Add the first research item</a></div>{% endfor %}</div></div>
+      {% else %}<div class="empty"><b>No open tasks</b><a href="{{url_for('pm.board')}}">Add the first task on the board</a></div>{% endfor %}</div></div>
     <div class="card"><div class="row" style="margin-bottom:12px"><h3>Recent activity</h3><a class="btn sec sm" style="margin-left:auto" href="{{url_for('activity')}}">Full feed</a></div>
       <div class="list">{% for a in activity %}<div class="li"><span class="avatar av{{ (a.who|length % 3)+1 }}" style="width:26px;height:26px;font-size:11px">{{a.who[0]|upper}}</span><div class="t"><span><b style="display:inline">{{a.who}}</b> {{a.action}} <a href="{{a.link}}">{{a.detail}}</a></span><div class="s">{{a.ts}}</div></div></div>
       {% else %}<div class="empty"><b>Nothing yet</b>Changes across the project will show here.</div>{% endfor %}</div></div>

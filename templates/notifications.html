@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% block title %}Notifications · Rainflow{% endblock %}
+{% block pagetitle %}Notifications{% endblock %}
+{% block body %}
+<div class="ph"><div><h1>Notifications</h1><div class="sub">assignments, mentions, comments on your tasks, due reminders, missed calls</div></div></div>
+<div class="grid g2" style="grid-template-columns:1fr 360px">
+<div class="card">{% for n in rows %}<div class="row" style="padding:9px 0;border-bottom:1px solid var(--line);align-items:flex-start"><span style="width:8px;height:8px;border-radius:50%;background:{{ 'var(--blue)' if not n.read else 'transparent' }};margin-top:7px;flex-shrink:0"></span><div style="flex:1"><a href="{{n.link or '#'}}" style="color:var(--ink)">{{n.text}}</a><div class="muted">{{n.ts}}</div></div></div>{% else %}<div class="empty"><b>All quiet</b>You'll see assignments, mentions and reminders here.</div>{% endfor %}</div>
+<div class="card"><h3 style="margin-bottom:6px">Also send me…</h3>
+<form method="post" action="{{url_for('pm.notif_prefs')}}">
+  <label><input type="checkbox" name="notify_email" style="width:auto" {% if prefs and prefs.notify_email %}checked{% endif %} {% if not email_ok %}disabled{% endif %}> Email {% if not email_ok %}<span class="muted">(admin: set SMTP_HOST/USER/PASS on the server)</span>{% endif %}</label>
+  <input name="email" type="email" placeholder="you@example.com" value="{{prefs.email if prefs else ''}}">
+  <label><input type="checkbox" name="notify_telegram" style="width:auto" {% if prefs and prefs.notify_telegram %}checked{% endif %} {% if not tg_ok %}disabled{% endif %}> Telegram {% if not tg_ok %}<span class="muted">(admin: set TELEGRAM_BOT_TOKEN on the server)</span>{% endif %}</label>
+  <input name="telegram_chat_id" placeholder="your Telegram chat id (message @userinfobot)" value="{{prefs.telegram_chat_id if prefs else ''}}">
+  <br><br><button>Save</button></form>
+<p class="muted" style="margin-top:12px">In-app alerts always work. The browser also shows a desktop notification for calls and mentions when the tab is in the background.</p></div>
+</div>
+{% endblock %}
