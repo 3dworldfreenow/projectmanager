@@ -1,59 +1,57 @@
 {% extends "base.html" %}{% block title %}Chat{% endblock %}
 {% block head %}<style>
-main{padding:0!important;max-width:none!important;display:flex;flex-direction:column;height:100vh;background:#fff}
-.chathead{display:flex;align-items:center;gap:12px;background:#fff;padding:8px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-.chathead .nm{font-weight:600}.chathead .st{font-size:13px;color:var(--acc)}
-.chathead .ib{width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;padding:0;font-size:19px;min-height:40px;background:transparent;color:var(--acc)}
-.chathead .ib:hover{background:var(--panel2)}
-.search{display:flex;align-items:center;gap:6px}.search input{width:230px;background:var(--panel2)}
-#log{flex:1;overflow-y:auto;padding:14px 12px;background:#dfe9ef url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cg fill='none' stroke='%23c9d7df' stroke-width='1.5'%3E%3Ccircle cx='30' cy='30' r='6'/%3E%3Cpath d='M90 20l10 10-10 10-10-10z'/%3E%3Cpath d='M30 100q10-10 20 0'/%3E%3Crect x='95' y='95' width='12' height='12' rx='3'/%3E%3C/g%3E%3C/svg%3E");display:flex;flex-direction:column;gap:5px}
-.msg{max-width:70%;padding:7px 10px 5px;border-radius:14px;background:var(--other);box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:15px;word-wrap:break-word;align-self:flex-start;border-bottom-left-radius:4px}
+/* fixed-height chat: only #log scrolls, header + compose stay put (desktop & mobile) */
+main{padding:0!important;max-width:none!important;display:flex;flex-direction:column;height:calc(100dvh - var(--topbar));background:#fff;overflow:hidden}
+.chathead{display:flex;align-items:center;gap:12px;background:#fff;padding:10px 16px;border-bottom:1px solid var(--line);flex-shrink:0}
+.chathead .nm{font-weight:600;font-size:15px}.chathead .st{font-size:12.5px;color:var(--muted)}
+.chathead .ib{width:38px;height:38px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;padding:0;min-height:38px;background:transparent;color:var(--blue2);border:0}
+.chathead .ib:hover{background:var(--blue-soft)}
+.chathead .ib svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.tools{display:flex;align-items:center;gap:6px}.search{display:flex;align-items:center;gap:4px}.search input{width:220px;background:var(--surface2);border-color:transparent;padding:7px 12px;border-radius:999px}
+#callee{width:auto;padding:6px 28px 6px 10px;border-radius:999px;font-size:13px}
+.pinbar{background:#fff;border-bottom:1px solid var(--line);padding:6px 16px;font-size:13px;display:flex;gap:8px;align-items:center;overflow-x:auto;white-space:nowrap;flex-shrink:0}.pinbar .p{cursor:pointer;color:var(--blue2)}
+#log{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 16px 10px;background:#e6eef5 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cg fill='none' stroke='%23d3dfe9' stroke-width='1.5'%3E%3Ccircle cx='30' cy='30' r='6'/%3E%3Cpath d='M90 20l10 10-10 10-10-10z'/%3E%3Cpath d='M30 100q10-10 20 0'/%3E%3Crect x='95' y='95' width='12' height='12' rx='3'/%3E%3C/g%3E%3C/svg%3E");display:flex;flex-direction:column;gap:5px}
+.msg{max-width:68%;padding:7px 10px 5px;border-radius:14px;background:var(--other);box-shadow:0 1px 1px rgba(0,0,0,.1);font-size:14.5px;word-wrap:break-word;align-self:flex-start;border-bottom-left-radius:4px}
 .msg.me{align-self:flex-end;background:var(--own);border-bottom-left-radius:14px;border-bottom-right-radius:4px}
-.msg .who{font-size:13px;font-weight:600;color:var(--acc);margin-bottom:2px}
-.msg .who.c1{color:#e17076}.msg .who.c2{color:#7bc862}.msg .who.c3{color:#e5ca77}.msg .who.c4{color:#65aadd}.msg .who.c5{color:#a695e7}.msg.me .who{display:none}
+.msg .who{font-size:12.5px;font-weight:600;color:var(--blue2);margin-bottom:2px}.msg.me .who{display:none}
+.msg .who.c1{color:#d35d64}.msg .who.c2{color:#4f9a3c}.msg .who.c3{color:#b58a12}.msg .who.c4{color:#3a86c9}.msg .who.c5{color:#7f6bd0}
 .msg .t{font-size:11px;color:#8a9aa5;text-align:right;margin-top:2px}.msg.me .t{color:#5fa655}.msg.me .t::after{content:" ✓✓"}
 .msg mark{background:#ffe97a;border-radius:3px}
 .msg .ed{font-size:11px;color:#8a9aa5;cursor:pointer;text-decoration:underline dotted}
-.msg .edit{display:none;font-size:12px;color:var(--acc);cursor:pointer;margin-left:6px}.msg.me:hover .edit,.msg.me:active .edit{display:inline}
-.msg .act{display:none;font-size:12px;margin-left:6px}.msg .act span{cursor:pointer;color:var(--acc);margin-right:6px}.msg:hover .act,.msg:active .act{display:inline}
-.quote{border-left:3px solid var(--acc);background:rgba(51,144,236,.08);padding:3px 8px;border-radius:6px;font-size:13px;margin-bottom:4px;cursor:pointer}.quote b{color:var(--acc);display:block;font-size:12px}
-.msg .b .mention{color:var(--acc);font-weight:600}.msg.mentioned{box-shadow:0 0 0 2px #f5b842}
+.msg .act{display:none;font-size:12px;margin-left:6px}.msg .act span{cursor:pointer;color:var(--blue2);margin-right:6px}.msg:hover .act,.msg:active .act{display:inline}
+.quote{border-left:3px solid var(--blue);background:rgba(47,125,225,.08);padding:3px 8px;border-radius:6px;font-size:13px;margin-bottom:4px;cursor:pointer}.quote b{color:var(--blue2);display:block;font-size:12px}
+.msg .b .mention{color:var(--blue2);font-weight:600}.msg.mentioned{box-shadow:0 0 0 2px #f0c060}
 .msg.del .b{color:#999;font-style:italic}
-.pinbar{background:#fff;border-bottom:1px solid var(--line);padding:6px 14px;font-size:13px;display:flex;gap:8px;align-items:center;overflow-x:auto;white-space:nowrap}.pinbar .p{cursor:pointer;color:var(--acc)}
-.replybar{display:none;background:#f4f8fc;border-top:1px solid var(--line);padding:6px 14px;font-size:13px;align-items:center;gap:8px}.replybar.on{display:flex}
+.msg img{max-width:100%;max-height:280px;border-radius:10px;display:block;margin-top:4px}
+.att{display:flex;align-items:center;gap:8px;margin-top:4px;color:var(--ink)}.att .fi{width:36px;height:36px;border-radius:50%;background:var(--blue);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:16px}
+.sys{align-self:center;background:rgba(0,0,0,.35);color:#fff;font-size:12px;padding:3px 12px;border-radius:999px}
 audio{width:240px;max-width:100%;margin-top:4px}
-#voiceBtn.rec{background:var(--bad);color:#fff;border-radius:50%}
 .msg.hl{animation:flash 1.2s}@keyframes flash{0%{box-shadow:0 0 0 4px #ffe97a}100%{box-shadow:none}}
 .hist{background:#fff8dc;border-left:3px solid #e0a200;font-size:13px;padding:4px 8px;margin-top:4px;border-radius:6px}
-.msg img{max-width:100%;max-height:280px;border-radius:10px;display:block;margin-top:4px}
-.att{display:flex;align-items:center;gap:8px;margin-top:4px;color:var(--txt)}.att .fi{width:38px;height:38px;border-radius:50%;background:var(--btn);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:17px}
-.sys{align-self:center;background:rgba(0,0,0,.35);color:#fff;font-size:12px;padding:3px 12px;border-radius:999px}
-.compose{display:flex;gap:6px;align-items:center;background:#fff;padding:8px;border-top:1px solid var(--line)}
-.compose input[type=text]{flex:1;background:transparent;font-size:16px}
-.compose .ib{width:44px;height:44px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;padding:0;font-size:20px;min-height:44px}
-.compose .ib.sec{background:transparent;color:var(--muted)}
-/* in-chat call panel */
-#callpanel{display:none;background:#1b2733;color:#fff;padding:10px 14px}
-#callpanel.on{display:block}
-#callpanel .vids{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
-#callpanel video{width:100%;background:#000;border-radius:10px;aspect-ratio:4/3}
+.replybar{display:none;background:#f4f8fc;border-top:1px solid var(--line);padding:6px 16px;font-size:13px;align-items:center;gap:8px;flex-shrink:0}.replybar.on{display:flex}
+.compose{display:flex;gap:4px;align-items:center;background:#fff;padding:8px 10px;border-top:1px solid var(--line);flex-shrink:0;padding-bottom:max(8px,env(safe-area-inset-bottom))}
+.compose input[type=text]{flex:1;background:var(--surface2);border-color:transparent;border-radius:999px;padding:10px 14px;font-size:15px}
+.compose .ib{width:42px;height:42px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;padding:0;font-size:19px;min-height:42px;border:0}
+.compose .ib.sec{background:transparent;color:var(--muted)}.compose .ib.sec:hover{background:var(--surface2)}
+#voiceBtn.rec{background:var(--red);color:#fff}
+#pending{flex-shrink:0;font-size:12px;color:var(--muted);padding:0 16px 6px;background:#fff}#pending:empty{display:none}
+#callpanel{display:none;background:#1b2733;color:#fff;padding:10px 14px;flex-shrink:0}#callpanel.on{display:block}
+#callpanel .vids{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}#callpanel video{width:100%;background:#000;border-radius:10px;aspect-ratio:4/3;max-height:34vh;object-fit:cover}
 #callpanel.audio .vids{display:none}
-#rec{display:none;color:#ff5c5c;font-weight:600}#rec.on{display:inline}
-@keyframes blink{50%{opacity:.3}}#rec.on::before{content:"● ";animation:blink 1s infinite}
-#incoming{display:none;background:#2e9e45;color:#fff;padding:10px 14px;align-items:center;gap:10px}
-#incoming.on{display:flex}
-@media(max-width:800px){ main{height:calc(100vh - 56px)} .msg{max-width:85%} .search input{width:140px} }
+#rec{display:none;color:#ff5c5c;font-weight:600}#rec.on{display:inline}@keyframes blink{50%{opacity:.3}}#rec.on::before{content:"● ";animation:blink 1s infinite}
+#incoming{display:none;background:var(--teal);color:#fff;padding:10px 14px;align-items:center;gap:10px;flex-shrink:0}#incoming.on{display:flex}
+@media(max-width:860px){ .msg{max-width:86%} .chathead{padding:8px 10px;gap:8px;flex-wrap:wrap} .chathead .nm{font-size:14px} .chathead .st{display:none} .tools{order:5;width:100%;padding-top:6px;border-top:1px solid var(--line);margin-top:4px} .search{flex:1} .search input{width:100%} #callee{flex-shrink:0} #log{padding:12px 10px 8px} }
 </style>{% endblock %}
 {% block pagetitle %}Chat{% endblock %}
 {% block body %}
 <div class="chathead">
-  <span class="avatar av3">👥</span>
+  <span class="avatar av3"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5 5 0 0 1 6 5"/></svg></span>
   <div><div class="nm">{{ projects|selectattr('id','equalto',current_pid)|map(attribute='name')|first }} team</div><div class="st" id="peerstate">{{ others|length + 1 }} members · all messages & calls saved</div></div>
   <div style="flex:1"></div>
-  {% if others|length > 1 %}<select id="callee" style="width:auto;background:var(--panel2)" title="who to call">{% for o in others %}<option>{{o}}</option>{% endfor %}</select>{% endif %}
-  <form class="search" onsubmit="return doSearch(event)"><input id="q" placeholder="🔍 Search" autocomplete="off"><button type="button" class="ib" onclick="clearSearch()" title="clear">✕</button></form>
-  <button type="button" class="ib" id="btnAudio" title="Voice call">📞</button>
-  <button type="button" class="ib" id="btnVideo" title="Video call">🎥</button>
+  <div class="tools">{% if others|length > 1 %}<select id="callee" style="width:auto;background:var(--panel2)" title="who to call">{% for o in others %}<option>{{o}}</option>{% endfor %}</select>{% endif %}
+  <form class="search" onsubmit="return doSearch(event)"><input id="q" placeholder="Search messages" autocomplete="off"><button type="button" class="ib" onclick="clearSearch()" title="Clear search"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></form></div>
+  <button type="button" class="ib" id="btnAudio" title="Voice call"><svg viewBox="0 0 24 24"><path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg></button>
+  <button type="button" class="ib" id="btnVideo" title="Video call"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg></button>
 </div>
 <div id="incoming"><span>📞 Incoming <b id="kindName"></b> call from <b id="fromName"></b></span><div style="flex:1"></div><button id="btnAccept" class="sm" style="background:#fff;color:#2e9e45">Accept</button><button id="btnReject" class="sm" style="background:rgba(0,0,0,.25)">Reject</button></div>
 <div id="callpanel">
@@ -75,7 +73,7 @@ audio{width:240px;max-width:100%;margin-top:4px}
   <input type="text" id="body" placeholder="Message (use @name to mention)" autocomplete="off" list="members">
   <datalist id="members">{% for u in members %}<option value="@{{u}} ">{% endfor %}</datalist>
   <button type="button" class="ib sec" id="voiceBtn" title="Hold to record a voice note">🎤</button>
-  <button class="ib" title="Send">➤</button>
+  <button class="ib" title="Send"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12L20 4l-4 16-4-7z"/></svg></button>
 </form>
 <div id="pending" class="muted" style="padding:2px 10px"></div>
 {% endblock %}
@@ -85,6 +83,8 @@ const $=id=>document.getElementById(id);
 const log=$('log'),me='{{user}}',pid={{current_pid}};let peer='{{other_user}}';
 const pickPeer=()=>{const c=$('callee');if(c)peer=c.value;};
 let lastId={{ msgs[-1].id if msgs else 0 }};log.scrollTop=log.scrollHeight;
+window.addEventListener('resize',()=>{log.scrollTop=log.scrollHeight;});
+$('body').addEventListener('focus',()=>setTimeout(()=>{log.scrollTop=log.scrollHeight;},300));
 // ---------------- chat ----------------
 let replyId=null,quotes={};
 function fmtBody(el,txt){el.innerHTML='';txt.split(/(@\w+)/g).forEach(p=>{if(/^@\w+$/.test(p)){const s=document.createElement('span');s.className='mention';s.textContent=p;el.appendChild(s);}else el.append(p);});}
@@ -145,16 +145,27 @@ function doSearch(e){e.preventDefault();const q=$('q').value.trim().toLowerCase(
  if(first)first.scrollIntoView({block:'center'});return false;}
 function clearSearch(){$('q').value='';doSearch(new Event('x'));}
 // ---------------- calls (WebRTC peer-to-peer, auto-recorded) ----------------
-const cfg={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
-let pc,local,recorder,chunks=[],callId=null,pendingOffer=null,kind='video';
+let cfg={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+fetch('/rtc-config').then(r=>r.json()).then(j=>{if(j.iceServers&&j.iceServers.length)cfg=j;}).catch(()=>{});
+let pc,local,recorder,callId=null,pendingOffer=null,kind='video',iceBuf=[],remoteSet=false,noAnswerT=null;
 const setStatus=t=>$('status').textContent=t;
 const sendSignal=m=>fetch('/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(m)});
-async function getMedia(k){kind=k;local=await navigator.mediaDevices.getUserMedia({audio:true,video:k==='video'});$('local').srcObject=local;
- $('callpanel').className='on'+(k==='audio'?' audio':'');}
-function makePc(){pc=new RTCPeerConnection(cfg);local.getTracks().forEach(t=>pc.addTrack(t,local));
- pc.onicecandidate=e=>e.candidate&&sendSignal({to:peer,type:'ice',data:e.candidate});
- pc.ontrack=e=>{$('remote').srcObject=e.streams[0];$('remoteAudio').srcObject=e.streams[0];startRecording(e.streams[0]);};
- pc.onconnectionstatechange=()=>{setStatus(pc.connectionState);if(['disconnected','failed','closed'].includes(pc.connectionState))hangup(false);};}
+function callAlert(title,msg){setStatus(title);alert(title+'\n\n'+msg);}
+async function getMedia(k){kind=k;
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){callAlert('Calls need a secure connection','Camera and microphone only work over https:// (or on localhost). Open the site with https.');throw new Error('no mediaDevices');}
+ try{local=await navigator.mediaDevices.getUserMedia({audio:true,video:k==='video'?{width:{ideal:640},height:{ideal:480}}:false});}
+ catch(err){if(k==='video'&&/NotFound|Overconstrained/i.test(err.name)){try{local=await navigator.mediaDevices.getUserMedia({audio:true});kind='audio';setStatus('no camera found — voice only');}catch(e2){err=e2;}}
+  if(!local){const why=/NotAllowed|Permission/i.test(err.name)?'Permission was blocked. Click the lock/camera icon in the address bar, allow Camera and Microphone, then try again.':/NotFound/i.test(err.name)?'No microphone/camera was found on this device.':/NotReadable|TrackStart/i.test(err.name)?'Another app is using the camera/microphone. Close it and try again.':err.message;
+   callAlert('Could not start call',why);throw err;}}
+ $('local').srcObject=local;$('callpanel').className='on'+(kind==='audio'?' audio':'');}
+function makePc(){pc=new RTCPeerConnection(cfg);iceBuf=[];remoteSet=false;local.getTracks().forEach(t=>pc.addTrack(t,local));
+ pc.onicecandidate=e=>e.candidate&&sendSignal({to:peer,type:'ice',data:e.candidate,callId});
+ pc.ontrack=e=>{$('remote').srcObject=e.streams[0];$('remoteAudio').srcObject=e.streams[0];$('remoteAudio').play().catch(()=>{});if(!recorder)startRecording(e.streams[0]);};
+ pc.onconnectionstatechange=()=>{const st=pc.connectionState;
+  if(st==='connected'){setStatus('connected · '+kind);clearTimeout(noAnswerT);}
+  else if(st==='failed'){setStatus('connection failed');alert('Call could not connect.\n\nBoth sides answered but the network path failed — this usually means a strict NAT / mobile data. Ask the admin to set TURN_URL / TURN_USER / TURN_PASS on the server (see TODO.md).');hangup(true);}
+  else if(['disconnected','closed'].includes(st))hangup(false);else setStatus(st+'…');};}
+async function flushIce(){remoteSet=true;for(const c of iceBuf){try{await pc.addIceCandidate(c);}catch(e){}}iceBuf=[];}
 function startRecording(remote){const ctx=new AudioContext(),dest=ctx.createMediaStreamDestination();
  [local,remote].forEach(st=>{if(st.getAudioTracks().length)ctx.createMediaStreamSource(st).connect(dest);});
  const tracks=[...dest.stream.getAudioTracks()];
@@ -162,37 +173,52 @@ function startRecording(remote){const ctx=new AudioContext(),dest=ctx.createMedi
    (function draw(){g.fillStyle='#000';g.fillRect(0,0,1280,480);try{g.drawImage($('local'),0,0,640,480);g.drawImage($('remote'),640,0,640,480);}catch(e){}
      if(recorder&&recorder.state==='recording')requestAnimationFrame(draw);})();
    tracks.push(...cv.captureStream(15).getVideoTracks());}
- // server-side recording: every 2 s chunk is streamed to the server immediately,
- // so the recording survives a dropped connection / closed tab on either side.
- recorder=new MediaRecorder(new MediaStream(tracks),{mimeType:'video/webm'});
+ const mime=['video/webm;codecs=vp8,opus','video/webm','video/mp4'].find(m=>MediaRecorder.isTypeSupported(m))||'';
+ try{recorder=new MediaRecorder(new MediaStream(tracks),mime?{mimeType:mime}:{});}catch(e){setStatus('connected (recording not supported in this browser)');return;}
+ // server-side recording: every 2 s chunk is streamed to the server immediately
  recorder.ondataavailable=e=>{if(e.data.size&&callId)fetch(`/call/${callId}/chunk`,{method:'POST',body:e.data,keepalive:true});};
  recorder.onstop=finish;recorder.start(2000);$('rec').classList.add('on');}
-async function finish(){$('rec').classList.remove('on');if(!callId)return;setStatus('recording saved on server ✓');
+async function finish(){$('rec').classList.remove('on');recorder=null;if(!callId)return;setStatus('recording saved on server ✓');
  await fetch(`/call/${callId}/end`,{method:'POST'});
- await fetch('/chat/send',{method:'POST',body:new URLSearchParams({body:`📞 ${kind} call ended — recording saved (see Call Recordings)`})});
+ await fetch('/chat/send',{method:'POST',body:new URLSearchParams({body:`📞 ${kind} call ended — recording saved (see Calls)`})});
  setTimeout(()=>$('callpanel').className='',1500);}
 window.addEventListener('pagehide',()=>{if(recorder&&recorder.state==='recording'){recorder.requestData();recorder.stop();}});
-async function call(k){pickPeer();if(!peer)return alert('No one else to call yet');await getMedia(k);ring(false);
- const r=await fetch('/call/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({callee:peer,kind:k})});callId=(await r.json()).id;
+async function call(k){pickPeer();if(!peer)return alert('No one else to call yet — add a team member first.');if(pc)return alert('A call is already in progress.');
+ try{await getMedia(k);}catch(e){return;}ring(false);
+ const r=await fetch('/call/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({callee:peer,kind})});callId=(await r.json()).id;
  makePc();const offer=await pc.createOffer();await pc.setLocalDescription(offer);
- sendSignal({to:peer,type:'offer',data:offer,callId,kind:k});setStatus('calling '+peer+'…');ringback();}
+ sendSignal({to:peer,type:'offer',data:offer,callId,kind,from:me});setStatus('calling '+peer+'…');ringback();
+ noAnswerT=setTimeout(()=>{if(pc&&pc.connectionState!=='connected'){setStatus(peer+' did not answer');fetch(`/call/${callId}/status/missed`,{method:'POST'});sendSignal({to:peer,type:'hangup',callId});hangup(false);alert(peer+' did not answer.\n\nThey will see a missed call. (They get a ringing alert on any page of the app while it is open.)');}},50000);}
 function ringback(){const i=setInterval(()=>{if(!pc||pc.connectionState==='connected'||pc.connectionState==='closed'){clearInterval(i);return;}beep(1);},2000);}
 $('btnVideo').onclick=()=>call('video');$('btnAudio').onclick=()=>call('audio');
+function showIncoming(m){pendingOffer=m;peer=m.from;$('fromName').textContent=m.from;$('kindName').textContent=m.kind;$('incoming').classList.add('on');ring(true);
+ notify('Incoming '+m.kind+' call from '+m.from,'Open Rainflow to answer');
+ clearTimeout(window.missT);window.missT=setTimeout(()=>{if($('incoming').classList.contains('on')){$('incoming').classList.remove('on');ring(false);fetch(`/call/${m.callId}/status/missed`,{method:'POST'});sendSignal({to:peer,type:'reject',callId:m.callId});}},45000);}
 async function onSignal(m){
- if(m.type==='offer'){pendingOffer=m;peer=m.from;$('fromName').textContent=m.from;$('kindName').textContent=m.kind;$('incoming').classList.add('on');ring(true);
-   clearTimeout(window.missT);window.missT=setTimeout(()=>{if($('incoming').classList.contains('on')){$('incoming').classList.remove('on');ring(false);fetch(`/call/${m.callId}/status/missed`,{method:'POST'});sendSignal({to:peer,type:'reject'});}},45000);}
- else if(m.type==='answer'&&pc){await pc.setRemoteDescription(m.data);}
- else if(m.type==='ice'&&pc){try{await pc.addIceCandidate(m.data);}catch(e){}}
- else if(m.type==='hangup'){if($('incoming').classList.contains('on')){$('incoming').classList.remove('on');ring(false);fetch(`/call/${pendingOffer.callId}/status/missed`,{method:'POST'});}hangup(false);}
- else if(m.type==='reject'){setStatus('call rejected');hangup(false);}}
+ if(m.type==='offer'){if(pc){sendSignal({to:m.from,type:'busy',callId:m.callId});return;}showIncoming(m);}
+ else if(m.type==='answer'&&pc){await pc.setRemoteDescription(m.data);await flushIce();clearTimeout(noAnswerT);}
+ else if(m.type==='ice'){if(pc&&remoteSet){try{await pc.addIceCandidate(m.data);}catch(e){}}else iceBuf.push(m.data);}
+ else if(m.type==='hangup'){if($('incoming').classList.contains('on')){$('incoming').classList.remove('on');ring(false);fetch(`/call/${pendingOffer.callId}/status/missed`,{method:'POST'});setStatus('missed call from '+m.from);}else{setStatus(m.from+' ended the call');}hangup(false);}
+ else if(m.type==='reject'){setStatus(peer+' declined the call');clearTimeout(noAnswerT);hangup(false);}
+ else if(m.type==='busy'){setStatus(peer+' is on another call');clearTimeout(noAnswerT);hangup(false);}}
 setInterval(async()=>{try{const r=await fetch('/signal/poll');for(const m of await r.json())await onSignal(m);}catch(e){}},1000);
-$('btnAccept').onclick=async()=>{$('incoming').classList.remove('on');ring(false);clearTimeout(window.missT);callId=pendingOffer.callId;fetch(`/call/${callId}/status/answered`,{method:'POST'});await getMedia(pendingOffer.kind);makePc();
- await pc.setRemoteDescription(pendingOffer.data);const ans=await pc.createAnswer();await pc.setLocalDescription(ans);
- sendSignal({to:peer,type:'answer',data:ans});setStatus('connected');};
-$('btnReject').onclick=()=>{$('incoming').classList.remove('on');ring(false);clearTimeout(window.missT);fetch(`/call/${pendingOffer.callId}/status/rejected`,{method:'POST'});sendSignal({to:peer,type:'reject'});};
-function hangup(notify=true){ring(false);if(notify)sendSignal({to:peer,type:'hangup'});
- if(recorder&&recorder.state==='recording')recorder.stop();else $('callpanel').className='';
- if(pc){pc.close();pc=null;}if(local){local.getTracks().forEach(t=>t.stop());}setStatus('call ended');}
-$('btnHang').onclick=()=>hangup(true);
+async function acceptCall(){$('incoming').classList.remove('on');ring(false);clearTimeout(window.missT);callId=pendingOffer.callId;
+ try{await getMedia(pendingOffer.kind);}catch(e){sendSignal({to:peer,type:'reject',callId});return;}
+ fetch(`/call/${callId}/status/answered`,{method:'POST'});makePc();
+ await pc.setRemoteDescription(pendingOffer.data);await flushIce();const ans=await pc.createAnswer();await pc.setLocalDescription(ans);
+ sendSignal({to:peer,type:'answer',data:ans,callId});setStatus('connecting…');}
+$('btnAccept').onclick=acceptCall;
+$('btnReject').onclick=()=>{$('incoming').classList.remove('on');ring(false);clearTimeout(window.missT);fetch(`/call/${pendingOffer.callId}/status/rejected`,{method:'POST'});sendSignal({to:peer,type:'reject',callId:pendingOffer.callId});};
+function hangup(notify=true){ring(false);clearTimeout(noAnswerT);if(notify&&pc)sendSignal({to:peer,type:'hangup',callId});
+ if(recorder&&recorder.state==='recording')recorder.stop();else{$('callpanel').className='';if(callId&&pc)fetch(`/call/${callId}/end`,{method:'POST'});}
+ if(pc){pc.onconnectionstatechange=null;pc.close();pc=null;}if(local){local.getTracks().forEach(t=>t.stop());local=null;}}
+$('btnHang').onclick=()=>{hangup(true);setStatus('call ended');};
+// ---- browser notifications (incoming calls / mentions when the tab is hidden)
+function notify(title,body){try{if(Notification.permission==='granted'&&document.hidden)new Notification(title,{body,icon:'/static/icon.png'});}catch(e){}}
+try{if('Notification' in window&&Notification.permission==='default'){const ask=()=>{Notification.requestPermission();document.removeEventListener('click',ask);};document.addEventListener('click',ask);}}catch(e){}
+// ---- a call that was answered from another page (site-wide banner) lands here
+try{const saved=JSON.parse(sessionStorage.getItem('rf_call')||'null');sessionStorage.removeItem('rf_call');
+ if(saved&&saved.offer){(async()=>{for(const m of saved.signals||[])if(m.type==='ice')iceBuf.push(m.data);
+   if(saved.action==='accept'){pendingOffer=saved.offer;peer=saved.offer.from;await acceptCall();}else showIncoming(saved.offer);})();}}catch(e){}
 </script>
 {% endblock %}

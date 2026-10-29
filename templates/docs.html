@@ -1,13 +1,13 @@
 {% extends "base.html" %}{% block title %}Documents{% endblock %}
 {% block pagetitle %}Documents{% endblock %}
 {% block body %}
-<h1>Documents</h1>
-<form class="card" method="post" enctype="multipart/form-data">
+<div class="ph"><div><h1>Documents</h1><div class="sub">{{docs|length}} files & notes</div></div></div>
+<details class="card" {% if not docs %}open{% endif %}><summary style="font-weight:600">+ Add a document</summary><form method="post" enctype="multipart/form-data" style="margin-top:8px">
   <div class="grid g2"><div><label>Title</label><input name="title" required></div><div><label>Attach file (datasheet, PDF, schematic, image…)</label><input type="file" name="file"></div></div>
   <label>Notes / content</label><textarea name="body"></textarea><br><br><button>Save document</button>
-</form>
+</form></details>
 {% for d in docs %}<div class="card"><div class="row"><b style="flex:1">{{d.title}}</b><span class="muted">{{d.uploaded_by}} · {{d.ts}}</span>
 <form method="post" action="{{url_for('doc_delete',did=d.id)}}" onsubmit="return confirm('Delete?')"><button class="btn danger sm">Delete</button></form></div>
 {% if d.filename %}<a href="{{url_for('uploaded',fn=d.filename)}}">📎 {{d.filename}}</a>{% endif %}
-{% if d.body %}<pre style="margin-top:8px">{{d.body}}</pre>{% endif %}</div>{% else %}<p class="muted">No documents yet.</p>{% endfor %}
+{% if d.body %}<pre style="margin-top:8px">{{d.body}}</pre>{% endif %}</div>{% else %}<div class="card empty"><b>No documents</b>Datasheets, schematics, specs and notes live here.</div>{% endfor %}
 {% endblock %}

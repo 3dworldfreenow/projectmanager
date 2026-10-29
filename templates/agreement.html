@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block title %}Agreement{% endblock %}
 {% block pagetitle %}Agreement{% endblock %}
 {% block body %}
-<h1>Working Agreement</h1>
+<div class="ph"><div><h1>Agreement</h1><div class="sub">{% if current %}version {{current.version}} · {{ current.accepted_by.split(",")|select|list|length }} accepted{% else %}not written yet{% endif %}</div></div></div>
 {% if current %}
 <div class="card"><div class="row"><b style="flex:1">Version {{current.version}}</b><span class="muted">by {{current.author}} · {{current.ts}}</span></div>
 <pre style="margin:12px 0">{{current.body}}</pre>

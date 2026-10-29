@@ -307,8 +307,22 @@ def dashboard():
     tasks = d.execute("SELECT * FROM research WHERE project_id=? AND status!='done' ORDER BY "
                       "CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, due LIMIT 8", (p,)).fetchall()
     agreement = d.execute("SELECT * FROM agreements ORDER BY version DESC LIMIT 1").fetchone()
-    return render_template("dashboard.html", stats=stats, recent_msgs=recent_msgs,
-                           recent_calls=recent_calls, tasks=tasks, agreement=agreement)
+    ms = d.execute("SELECT status, amount FROM milestones WHERE project_id=?", (p,)).fetchall()
+    ms_total = len(ms); ms_done = sum(1 for m in ms if m["status"] in ("delivered", "paid"))
+    amt_total = sum(m["amount"] or 0 for m in ms); amt_paid = sum(m["amount"] or 0 for m in ms if m["status"] == "paid")
+    tests_total = stats["tests_pass"] + stats["tests_fail"]
+    pulse = dict(
+        tests=round(100 * stats["tests_pass"] / tests_total) if tests_total else None,
+        milestones=round(100 * ms_done / ms_total) if ms_total else None, ms_done=ms_done, ms_total=ms_total,
+        paid=round(100 * amt_paid / amt_total) if amt_total else None, amt_paid=amt_paid, amt_total=amt_total,
+        research=round(100 * stats["research_done"] / (stats["research_done"] + stats["research_open"])) if (stats["research_done"] + stats["research_open"]) else None,
+    )
+    low = d.execute("SELECT COUNT(*) FROM hardware WHERE project_id=? AND min_qty>0 AND qty<=min_qty", (p,)).fetchone()[0]
+    fw = d.execute("SELECT version, status FROM firmware WHERE project_id=? ORDER BY id DESC LIMIT 1", (p,)).fetchone()
+    members = all_users()
+    activity = d.execute("SELECT * FROM activity WHERE project_id=? ORDER BY id DESC LIMIT 6", (p,)).fetchall()
+    return render_template("dashboard.html", stats=stats, recent_msgs=recent_msgs, recent_calls=recent_calls,
+                           tasks=tasks, agreement=agreement, pulse=pulse, low=low, fw=fw, members=members, activity=activity)
 
 IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 
@@ -429,6 +443,24 @@ def chat_poll():
                    edited=[dict(r) for r in edited], quotes=byid)
 
 # ---- WebRTC signaling: server only relays offer/answer/ICE between the two peers
+@app.route("/rtc-config")
+@login_required
+def rtc_config():
+    """ICE servers for WebRTC. Set TURN_URL / TURN_USER / TURN_PASS in the environment
+    (systemd unit) to make calls work across strict NATs and mobile data."""
+    servers = [{"urls": "stun:stun.l.google.com:19302"}]
+    if os.environ.get("TURN_URL"):
+        servers.append({"urls": os.environ["TURN_URL"].split(","),
+                        "username": os.environ.get("TURN_USER", ""), "credential": os.environ.get("TURN_PASS", "")})
+    return jsonify(iceServers=servers)
+
+@app.route("/signal/peek")
+@login_required
+def signal_peek():
+    """Used by the site-wide call banner on non-chat pages: returns pending signals
+    for this user (same as poll)."""
+    return signal_poll()
+
 @app.route("/signal", methods=["POST"])
 @login_required
 def signal_send():

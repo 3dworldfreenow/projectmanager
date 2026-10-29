@@ -1,46 +1,62 @@
-{% extends "base.html" %}{% block title %}Dashboard{% endblock %}
-{% block pagetitle %}Dashboard{% endblock %}
+{% extends "base.html" %}{% block title %}Overview · Rainflow{% endblock %}
+{% block pagetitle %}Overview{% endblock %}
+{% block head %}<style>
+.pulse{background:linear-gradient(135deg,#1f66c2 0%,#2f7de1 55%,#3d93f0 100%);color:#fff;border-radius:16px;padding:22px 24px;margin-bottom:16px;box-shadow:0 10px 30px -12px rgba(31,102,194,.55);position:relative;overflow:hidden}
+.pulse::after{content:"";position:absolute;right:-60px;top:-80px;width:260px;height:260px;border-radius:50%;background:rgba(255,255,255,.08)}
+.pulse h1{color:#fff;font-size:20px}.pulse .sub{color:rgba(255,255,255,.78);font-size:13px;margin-top:2px}
+.rings{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px}
+.ring{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:10px 12px}
+.ring svg{width:52px;height:52px;flex-shrink:0;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:5}.ring .bg{stroke:rgba(255,255,255,.22)}.ring .fg{stroke:#fff;stroke-linecap:round}
+.ring .v{font-size:18px;font-weight:600;line-height:1.1}.ring .k{font-size:12px;color:rgba(255,255,255,.82)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.chip{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:4px 11px;font-size:12.5px}
+.chip.alert{background:#fff;color:#b43232;font-weight:600}
+.list{display:flex;flex-direction:column}.li{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--line)}.li:last-child{border-bottom:0;padding-bottom:0}.li:first-child{padding-top:0}
+.li .t{flex:1;min-width:0}.li .t b{font-weight:600;display:block}.li .t .s{color:var(--muted);font-size:12.5px;margin-top:1px}
+.avs{display:flex}.avs .avatar{width:28px;height:28px;font-size:12px;border:2px solid #2a76d6;margin-left:-8px}.avs .avatar:first-child{margin-left:0}
+@media(max-width:860px){.rings{grid-template-columns:1fr 1fr}.pulse{padding:18px 16px}}
+</style>{% endblock %}
 {% block body %}
-<h1>Dashboard <span class="muted" style="font-weight:400;font-size:14px">· {{ projects|selectattr('id','equalto',current_pid)|map(attribute='name')|first }}</span></h1>
-<div class="grid g4">
-  <div class="card stat"><div class="n">{{stats.messages}}</div><div class="l">Chat messages</div></div>
-  <div class="card stat"><div class="n">{{stats.calls}}</div><div class="l">Recorded calls</div></div>
-  <div class="card stat"><div class="n">{{stats.hardware}}</div><div class="l">Hardware items</div></div>
-  <div class="card stat"><div class="n">{{stats.docs}}</div><div class="l">Documents</div></div>
-  <div class="card stat"><div class="n" style="color:var(--ok)">{{stats.tests_pass}} <span class="muted">/ <span style="color:var(--bad)">{{stats.tests_fail}}</span></span></div><div class="l">Tests pass / fail</div></div>
-  <div class="card stat"><div class="n">{{stats.research_open}} <span class="muted">/ {{stats.research_done}}</span></div><div class="l">Research open / done</div></div>
-</div>
+{% macro ring(pct,label,val) -%}
+<div class="ring"><svg viewBox="0 0 56 56"><circle class="bg" cx="28" cy="28" r="24"/><circle class="fg" cx="28" cy="28" r="24" pathLength="100" stroke-dasharray="{{ pct or 0 }} 100"/></svg><div><div class="v num">{{ val }}</div><div class="k">{{label}}</div></div></div>
+{%- endmacro %}
+<section class="pulse">
+  <div class="row" style="justify-content:space-between">
+    <div><h1>{{ projects|selectattr('id','equalto',current_pid)|map(attribute='name')|first }}</h1><div class="sub">Project pulse · {{ members|length }} members</div></div>
+    <div class="avs">{% for m in members %}<span class="avatar av{{ (loop.index0 % 3)+1 }}" title="{{m}}">{{m[0]|upper}}</span>{% endfor %}</div>
+  </div>
+  <div class="rings">
+    {{ ring(pulse.tests, 'tests passing', (pulse.tests ~ '%') if pulse.tests is not none else '—') }}
+    {{ ring(pulse.milestones, 'milestones done', pulse.ms_done ~ ' / ' ~ pulse.ms_total) }}
+    {{ ring(pulse.paid, 'of ₹' ~ '%.0f'|format(pulse.amt_total) ~ ' paid', '₹' ~ '%.0f'|format(pulse.amt_paid)) }}
+    {{ ring(pulse.research, 'research done', stats.research_done ~ ' / ' ~ (stats.research_done + stats.research_open)) }}
+  </div>
+  <div class="chips">
+    <span class="chip">💬 {{stats.messages}} messages</span><span class="chip">📞 {{stats.calls}} calls</span><span class="chip">🔧 {{stats.hardware}} parts</span>
+    {% if fw %}<span class="chip">💾 firmware {{fw.version}} · {{fw.status}}</span>{% endif %}
+    {% if low %}<span class="chip alert">⚠ {{low}} part{{'s' if low>1}} low on stock</span>{% endif %}
+    {% if agreement %}<span class="chip">🤝 agreement v{{agreement.version}} · {{ agreement.accepted_by.split(',')|select|list|length }} accepted</span>{% else %}<span class="chip alert">no agreement yet</span>{% endif %}
+  </div>
+</section>
+
 <div class="grid g2">
   <div>
-    <h2>Open research & tasks</h2>
-    <div class="card">
-      {% if tasks %}<table>{% for t in tasks %}<tr><td><b>{{t.title}}</b><br><span class="muted">{{t.owner}} · due {{t.due or '—'}}</span></td>
-      <td><span class="tag {{ 'bad' if t.priority=='high' else 'warn' if t.priority=='medium' else '' }}">{{t.priority}}</span> <span class="tag info">{{t.status}}</span></td></tr>{% endfor %}</table>
-      {% else %}<p class="muted">Nothing open. <a href="{{url_for('research')}}">Add a task</a></p>{% endif %}
-    </div>
-    <h2>Agreement</h2>
-    <div class="card">
-      {% if agreement %}<b>v{{agreement.version}}</b> by {{agreement.author}} · {{agreement.ts}}<br>
-      Accepted by: {% for u in agreement.accepted_by.split(',') if u %}<span class="tag ok">{{u}}</span>{% else %}<span class="tag warn">nobody yet</span>{% endfor %}
-      {% else %}<p class="muted">No agreement written yet. <a href="{{url_for('agreement')}}">Write it</a></p>{% endif %}
-    </div>
+    <div class="card"><div class="row" style="margin-bottom:12px"><h3>Open research & tasks</h3><a class="btn sec sm" style="margin-left:auto" href="{{url_for('research')}}">View all</a></div>
+      <div class="list">{% for t in tasks %}<div class="li"><div class="t"><b>{{t.title}}</b><div class="s">{{t.owner}}{% if t.due %} · due {{t.due}}{% endif %}</div></div>
+      <span class="tag {{ 'bad' if t.priority=='high' else 'warn' if t.priority=='medium' else '' }}">{{t.priority}}</span></div>
+      {% else %}<div class="empty"><b>No open tasks</b><a href="{{url_for('research')}}">Add the first research item</a></div>{% endfor %}</div></div>
+    <div class="card"><div class="row" style="margin-bottom:12px"><h3>Recent activity</h3><a class="btn sec sm" style="margin-left:auto" href="{{url_for('activity')}}">Full feed</a></div>
+      <div class="list">{% for a in activity %}<div class="li"><span class="avatar av{{ (a.who|length % 3)+1 }}" style="width:26px;height:26px;font-size:11px">{{a.who[0]|upper}}</span><div class="t"><span><b style="display:inline">{{a.who}}</b> {{a.action}} <a href="{{a.link}}">{{a.detail}}</a></span><div class="s">{{a.ts}}</div></div></div>
+      {% else %}<div class="empty"><b>Nothing yet</b>Changes across the project will show here.</div>{% endfor %}</div></div>
   </div>
   <div>
-    <h2>Recent chat</h2>
-    <div class="card">
-      {% for m in recent_msgs %}<div><b>{{m.sender}}</b> <span class="muted">{{m.ts}}</span><br>{{m.body}}</div><hr style="border:0;border-top:1px solid var(--line)">{% else %}<p class="muted">No messages yet.</p>{% endfor %}
-      <a class="btn sm" href="{{url_for('chat')}}">Open chat</a>
-    </div>
-    <h2>Recent calls</h2>
-    <div class="card">
-      {% for c in recent_calls %}<div>📞 {{c.caller}} → {{c.callee}} <span class="muted">{{c.started}}</span>
-      {% if c.recording %}<span class="tag ok">recorded</span>{% else %}<span class="tag warn">no recording</span>{% endif %}</div>{% else %}<p class="muted">No calls yet.</p>{% endfor %}
-      <a class="btn sm" href="{{url_for('chat')}}">Start a call</a>
-    </div>
+    <div class="card"><div class="row" style="margin-bottom:12px"><h3>Chat</h3><a class="btn sm" style="margin-left:auto" href="{{url_for('chat')}}">Open chat</a></div>
+      <div class="list">{% for m in recent_msgs|reverse %}<div class="li"><span class="avatar av{{ (m.sender|length % 3)+1 }}" style="width:26px;height:26px;font-size:11px">{{m.sender[0]|upper}}</span><div class="t"><span><b style="display:inline">{{m.sender}}</b> <span class="muted">{{m.ts[-5:]}}</span></span><div>{% if m.deleted %}<i class="muted">deleted</i>{% else %}{{m.body or ('📎 ' ~ (m.orig_name or ''))}}{% endif %}</div></div></div>
+      {% else %}<div class="empty"><b>No messages yet</b>Say hello to the team.</div>{% endfor %}</div></div>
+    <div class="card"><div class="row" style="margin-bottom:12px"><h3>Calls</h3><a class="btn sec sm" style="margin-left:auto" href="{{url_for('chat')}}">Start a call</a></div>
+      <div class="list">{% for c in recent_calls %}<div class="li"><div class="t"><b>{{c.caller}} → {{c.callee}}</b><div class="s">{{c.kind}} · {{c.started}}</div></div>{% if c.recording or c.recording2 %}<span class="tag ok">recorded</span>{% elif c.status in ('missed','missed_seen') %}<span class="tag bad">missed</span>{% else %}<span class="tag">{{c.status}}</span>{% endif %}</div>
+      {% else %}<div class="empty"><b>No calls yet</b>Voice and video calls are recorded automatically.</div>{% endfor %}</div></div>
+    <div class="card"><h3 style="margin-bottom:10px">New project</h3><form class="row" method="post" action="{{url_for('add_project')}}"><input name="name" placeholder="Project name" required style="flex:1;min-width:140px"><input name="description" placeholder="Short description" style="flex:2;min-width:160px"><button>Create</button></form></div>
   </div>
 </div>
-<h2>New project</h2>
-<form class="card row" method="post" action="{{url_for('add_project')}}">
-  <input name="name" placeholder="Project name" required style="flex:1"><input name="description" placeholder="Description" style="flex:2"><button>Add</button>
-</form>
 {% endblock %}

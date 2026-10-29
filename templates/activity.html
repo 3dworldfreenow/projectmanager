@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block title %}Activity{% endblock %}
 {% block pagetitle %}Activity{% endblock %}
 {% block body %}
-<h1>Activity feed</h1>
+<div class="ph"><div><h1>Activity</h1><div class="sub">everything that changed in this project</div></div></div>
 {% if since %}<p class="muted">Items highlighted happened since your previous login ({{since}}).</p>{% endif %}
 <div class="card">
 {% for a in rows %}<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line);{% if since and a.ts>since %}background:#fffbe6;margin:0 -16px;padding:8px 16px{% endif %}">

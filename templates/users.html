@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block title %}Users{% endblock %}
 {% block pagetitle %}Users{% endblock %}
 {% block body %}
-<h1>Team members <span class="muted" style="font-size:14px;font-weight:400">· admin only</span></h1>
+<div class="ph"><div><h1>Team members</h1><div class="sub">{{users|length}} accounts · admin only</div></div></div>
 <form class="card" method="post">
   <div class="grid g4">
     <div><label>Username</label><input name="username" required></div>
@@ -11,7 +11,7 @@
   </div>
   <div class="row" style="margin-top:10px"><label style="margin:0"><input type="checkbox" name="is_admin" style="width:auto"> Make admin</label><button>Add member</button></div>
 </form>
-<div class="card"><table><tr><th>User</th><th>Role</th><th>Status</th><th>Actions</th></tr>
+<div class="card tight"><table><tr><th>User</th><th>Role</th><th>Status</th><th>Actions</th></tr>
 {% for u in users %}<tr><td><span class="avatar av{{ (loop.index % 3)+1 }}" style="width:30px;height:30px;font-size:13px">{{u.username[0]|upper}}</span> <b>{{u.username}}</b> {% if u.is_admin %}<span class="tag info">admin</span>{% endif %}</td>
 <td><form method="post" action="{{url_for('user_update',name=u.username)}}" class="row" style="gap:4px"><input type="hidden" name="action" value="role"><select name="role" style="width:auto">{% for r in ROLES %}<option {% if r==u.role %}selected{% endif %}>{{r}}</option>{% endfor %}{% if u.role not in ROLES %}<option selected>{{u.role}}</option>{% endif %}</select><input name="role_custom" placeholder="custom" style="width:110px"><button class="btn sec sm">Save</button></form></td>
 <td>{% if u.active %}<span class="tag ok">active</span>{% else %}<span class="tag bad">disabled</span>{% endif %}</td>

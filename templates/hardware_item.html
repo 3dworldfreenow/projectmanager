@@ -3,7 +3,7 @@
 {% block body %}
 <a href="{{url_for('hardware')}}">← Hardware list</a>
 <div class="row">{% if item.photo %}<img src="{{url_for('uploaded',fn=item.photo)}}" style="width:72px;height:72px;object-fit:cover;border-radius:12px">{% endif %}<h1 style="margin:0">{{item.name}} <span class="tag info">v{{item.version}}</span>{% if item.datasheet %} <a class="btn sec sm" href="{{item.datasheet}}" target="_blank">📄 Datasheet</a>{% endif %}</h1></div><br>
-<form class="card" method="post" enctype="multipart/form-data">
+<form class="card" method="post" enctype="multipart/form-data" style="margin-top:14px">
   <div class="grid g4">
     <div><label>Name</label><input name="name" value="{{item.name}}" required></div>
     <div><label>Part no.</label><input name="part_no" value="{{item.part_no}}"></div>
@@ -17,7 +17,7 @@
   </div><label>Notes</label><input name="notes" value="{{item.notes}}"><br><br><button>Save (creates v{{item.version+1}})</button>
 </form>
 <h2>Version history</h2>
-<div class="card"><table><tr><th>Ver</th><th>Snapshot</th><th>By</th><th>When</th></tr>
+<div class="card tight"><table><tr><th>Ver</th><th>Snapshot</th><th>By</th><th>When</th></tr>
 <tr><td><b>v{{item.version}}</b> (current)</td><td class="muted">—</td><td>{{item.updated_by}}</td><td>{{item.ts}}</td></tr>
 {% for h in history %}<tr><td>v{{h.version}}</td><td class="muted">{{h.snapshot}}</td><td>{{h.changed_by}}</td><td>{{h.ts}}</td></tr>{% endfor %}</table></div>
 <h2>Tests on this part</h2>

@@ -41,7 +41,11 @@ The app runs fully; PDF export falls back to a print-to-PDF page. Then try `uv p
 ## Letting the team connect
 Browsers only allow camera/mic on **https://** (or localhost), so for calls over the internet run the app
 behind an HTTPS tunnel (`ngrok http 5000`, Cloudflare Tunnel) or a server with a certificate.
-If calls don't connect across strict NATs / mobile data, add a TURN server to `iceServers` in `templates/chat.html`.
+**Calls across mobile data / strict NAT need a TURN server.** Get free credentials at metered.ca (or run coturn), then add to the systemd unit:
+```
+Environment=TURN_URL=turn:a.relay.metered.ca:80,turn:a.relay.metered.ca:443 TURN_USER=xxxx TURN_PASS=yyyy
+```
+and `systemctl daemon-reload && systemctl restart rainflow`. Incoming calls ring on every page of the app (banner + sound), with a browser notification if the tab is in the background.
 For production, serve with `waitress-serve --port 5000 app:app` instead of the dev server.
 
 ## Data
