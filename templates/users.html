@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}Users{% endblock %}
+{% block pagetitle %}Users{% endblock %}
+{% block body %}
+<h1>Team members <span class="muted" style="font-size:14px;font-weight:400">· admin only</span></h1>
+<form class="card" method="post">
+  <div class="grid g4">
+    <div><label>Username</label><input name="username" required></div>
+    <div><label>Password (6+)</label><input name="password" type="password" required minlength="6"></div>
+    <div><label>Role</label><select name="role">{% for r in ROLES %}<option>{{r}}</option>{% endfor %}</select></div>
+    <div><label>…or custom role</label><input name="role_custom" placeholder="e.g. PCB Designer"></div>
+  </div>
+  <div class="row" style="margin-top:10px"><label style="margin:0"><input type="checkbox" name="is_admin" style="width:auto"> Make admin</label><button>Add member</button></div>
+</form>
+<div class="card"><table><tr><th>User</th><th>Role</th><th>Status</th><th>Actions</th></tr>
+{% for u in users %}<tr><td><span class="avatar av{{ (loop.index % 3)+1 }}" style="width:30px;height:30px;font-size:13px">{{u.username[0]|upper}}</span> <b>{{u.username}}</b> {% if u.is_admin %}<span class="tag info">admin</span>{% endif %}</td>
+<td><form method="post" action="{{url_for('user_update',name=u.username)}}" class="row" style="gap:4px"><input type="hidden" name="action" value="role"><select name="role" style="width:auto">{% for r in ROLES %}<option {% if r==u.role %}selected{% endif %}>{{r}}</option>{% endfor %}{% if u.role not in ROLES %}<option selected>{{u.role}}</option>{% endif %}</select><input name="role_custom" placeholder="custom" style="width:110px"><button class="btn sec sm">Save</button></form></td>
+<td>{% if u.active %}<span class="tag ok">active</span>{% else %}<span class="tag bad">disabled</span>{% endif %}</td>
+<td class="row" style="gap:4px">
+ <form method="post" action="{{url_for('user_update',name=u.username)}}" class="row" style="gap:4px"><input type="hidden" name="action" value="reset"><input name="password" type="password" placeholder="new password" style="width:130px"><button class="btn sec sm">Reset</button></form>
+ {% if u.username!=user %}<form method="post" action="{{url_for('user_update',name=u.username)}}"><input type="hidden" name="action" value="toggle"><button class="btn sec sm">{{ 'Disable' if u.active else 'Enable' }}</button></form>
+ <form method="post" action="{{url_for('user_update',name=u.username)}}"><input type="hidden" name="action" value="admin"><button class="btn sec sm">{{ 'Remove admin' if u.is_admin else 'Make admin' }}</button></form>{% endif %}
+</td></tr>{% endfor %}</table></div>
+{% endblock %}

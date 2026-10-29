@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block title %}Activity{% endblock %}
+{% block pagetitle %}Activity{% endblock %}
+{% block body %}
+<h1>Activity feed</h1>
+{% if since %}<p class="muted">Items highlighted happened since your previous login ({{since}}).</p>{% endif %}
+<div class="card">
+{% for a in rows %}<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line);{% if since and a.ts>since %}background:#fffbe6;margin:0 -16px;padding:8px 16px{% endif %}">
+<span class="avatar av{{ (a.who|length % 3)+1 }}" style="width:30px;height:30px;font-size:13px">{{a.who[0]|upper}}</span>
+<div style="flex:1"><b>{{a.who}}</b> {{a.action}} {% if a.link %}<a href="{{a.link}}">{{a.detail}}</a>{% else %}{{a.detail}}{% endif %}</div><span class="muted">{{a.ts}}</span></div>
+{% else %}<p class="muted">Nothing yet.</p>{% endfor %}
+</div>
+{% endblock %}

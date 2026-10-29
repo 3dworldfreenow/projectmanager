@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}Milestones{% endblock %}
+{% block pagetitle %}Milestones{% endblock %}
+{% block body %}
+<h1>Milestones & payments</h1>
+<div class="grid g4">
+  <div class="card stat"><div class="n">₹{{'%.0f'|format(total)}}</div><div class="l">Total agreed</div></div>
+  <div class="card stat"><div class="n" style="color:var(--ok)">₹{{'%.0f'|format(paid)}}</div><div class="l">Paid</div></div>
+  <div class="card stat"><div class="n" style="color:var(--warn)">₹{{'%.0f'|format(total-paid)}}</div><div class="l">Remaining</div></div>
+  <div class="card stat"><div class="n">{% if agreement %}v{{agreement.version}}{% else %}—{% endif %}</div><div class="l">Linked <a href="{{url_for('agreement')}}">agreement</a></div></div>
+</div>
+<form class="card" method="post">
+  <div class="grid g4"><div style="grid-column:span 2"><label>Milestone</label><input name="title" required placeholder="Prototype PCB assembled & tested"></div>
+  <div><label>Amount (₹)</label><input name="amount" type="number" step="0.01"></div><div><label>Due</label><input name="due" type="date"></div></div>
+  <label>Deliverables / acceptance criteria</label><textarea name="details"></textarea><br><br><button>Add milestone {% if agreement %}(under agreement v{{agreement.version}}){% endif %}</button>
+</form>
+<div class="card"><table><tr><th>Milestone</th><th>Amount</th><th>Due</th><th>Agreement</th><th>Status</th><th>Update</th></tr>
+{% for m in items %}<tr><td><b>{{m.title}}</b><br><span class="muted">{{m.details}}</span>{% if m.status=='paid' %}<br><span class="muted">paid {{m.paid_on}} {% if m.paid_ref %}· ref {{m.paid_ref}}{% endif %}</span>{% endif %}</td>
+<td>₹{{'%.0f'|format(m.amount or 0)}}</td><td>{{m.due or '—'}}</td><td>{% if m.agreement_version %}v{{m.agreement_version}}{% else %}—{% endif %}</td>
+<td><span class="tag {{ 'ok' if m.status=='paid' else 'info' if m.status=='delivered' else 'warn' if m.status=='in_progress' else '' }}">{{m.status.replace('_',' ')}}</span>{% if m.status in ('delivered','paid') %}<br><a class="btn sec sm" style="margin-top:4px" href="{{url_for('invoice',mid=m.id)}}" target="_blank">🧾 Invoice PDF</a>{% endif %}</td>
+<td><form method="post" action="{{url_for('milestone_update',mid=m.id)}}" class="row" style="gap:4px"><select name="status" style="width:auto">{% for st in ['pending','in_progress','delivered','paid'] %}<option value="{{st}}" {% if st==m.status %}selected{% endif %}>{{st.replace('_',' ')}}</option>{% endfor %}</select>
+<input name="paid_on" type="date" style="width:auto" title="paid on"><input name="paid_ref" placeholder="UPI/ref" style="width:90px"><button class="btn sec sm">Save</button></form></td></tr>
+{% else %}<tr><td colspan="6" class="muted">No milestones yet.</td></tr>{% endfor %}</table></div>
+{% endblock %}

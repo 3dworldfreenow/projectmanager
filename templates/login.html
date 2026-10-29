@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block title %}Login{% endblock %}
+{% block body %}
+<div style="max-width:360px;margin:70px auto;text-align:center">
+  <div class="avatar av1" style="width:96px;height:96px;font-size:44px;margin:0 auto 16px;box-shadow:0 8px 30px rgba(42,171,238,.35)">⚡</div>
+  <h1 style="margin-bottom:4px">IoT PM</h1>
+  <p class="muted" style="margin-top:0">Software + Hardware team workspace</p>
+  <form method="post" class="card" style="text-align:left">
+    <label>Username</label><input name="username" required autofocus>
+    <label>Password</label><input name="password" type="password" required>
+    <br><br><button style="width:100%;min-height:46px">LOG IN</button>
+  </form>
+</div>
+{% endblock %}

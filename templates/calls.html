@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block title %}Calls{% endblock %}
+{% block pagetitle %}Calls{% endblock %}
+{% block body %}
+<h1>Calls</h1>
+{% if missed_rows %}<div class="card" style="border-color:#e5505a"><div class="row"><b>📵 Missed calls</b><div style="flex:1"></div>{% if missed %}<form method="post" action="{{url_for('clear_missed')}}"><button class="btn sec sm">Mark all seen</button></form>{% endif %}</div>
+{% for c in missed_rows %}<div class="row" style="margin-top:6px">{% if c.status=='missed' %}<span class="tag bad">new</span>{% endif %}<b>{{c.caller}}</b> called you ({{c.kind}}) · <span class="muted">{{c.started}}</span><a class="btn sec sm" href="{{url_for('chat')}}">Call back</a></div>{% endfor %}</div>{% endif %}
+<h2>History & recordings</h2>
+<p class="muted">Start a voice 📞 or video 🎥 call from the <a href="{{url_for('chat')}}">chat</a> header. Every call is recorded automatically and listed here.</p>
+{% for c in calls %}<div class="card"><div class="row"><span class="avatar av2" style="width:34px;height:34px;font-size:14px">{{c.callee[0]|upper}}</span><b style="flex:1">{{c.caller}} → {{c.callee}} <span class="tag info">{{c.kind}}</span> <span class="tag {{ 'ok' if c.status=='answered' else 'bad' if c.status in ('missed','missed_seen') else '' }}">{{ 'missed' if c.status=='missed_seen' else c.status }}</span></b><span class="muted">{{c.started}} {% if c.ended %}– {{c.ended}}{% endif %}</span></div>
+{% for rec,who in [(c.recording,c.caller),(c.recording2,c.callee)] if rec %}<div style="margin-top:8px"><span class="muted">Recorded on {{who}}'s side (server copy)</span><br><video controls preload="metadata" style="width:100%;max-width:480px;border-radius:10px;background:#000" src="{{url_for('recording',fn=rec)}}"></video><br><a href="{{url_for('recording',fn=rec)}}" download>⬇ download</a></div>{% else %}<span class="tag warn">no recording saved</span>{% endfor %}
+<form method="post" action="{{url_for('call_notes',cid=c.id)}}" class="row" style="margin-top:8px"><input name="notes" value="{{c.notes or ''}}" placeholder="Call notes / decisions…" style="flex:1"><button class="btn sec sm">Save notes</button></form></div>
+{% else %}<p class="muted">No calls yet.</p>{% endfor %}
+{% endblock %}

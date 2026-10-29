@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block title %}Firmware{% endblock %}
+{% block pagetitle %}Firmware{% endblock %}
+{% block body %}
+<h1>Firmware versions</h1>
+<form class="card" method="post" enctype="multipart/form-data">
+  <div class="grid g4">
+    <div><label>Version</label><input name="version" required placeholder="v0.3.1"></div>
+    <div><label>Target board</label><input name="target" list="hwlist" placeholder="ESP32 DevKit v1"><datalist id="hwlist">{% for h in hw %}<option value="{{h.name}}">{% endfor %}</datalist></div>
+    <div><label>Status</label><select name="status"><option value="dev">dev</option><option value="testing">testing</option><option value="stable">stable</option></select></div>
+    <div><label>Binary / source (.bin, .zip, .ino…)</label><input type="file" name="file"></div>
+  </div>
+  <label>Release notes / changes</label><textarea name="notes" placeholder="- Added deep sleep between readings&#10;- Fixed BME280 I2C timeout"></textarea>
+  <br><br><button>Add version</button>
+</form>
+{% for f in items %}<div class="card"><div class="row"><b style="flex:1;font-size:17px">{{f.version}} <span class="muted" style="font-weight:400">· {{f.target}}</span></b>
+<span class="tag {{ 'ok' if f.status=='stable' else 'warn' if f.status=='testing' else 'bad' if f.status=='deprecated' else 'info' }}">{{f.status}}</span><span class="muted">{{f.author}} · {{f.ts}}</span></div>
+{% if f.notes %}<pre style="margin:8px 0">{{f.notes}}</pre>{% endif %}
+<div class="row">{% if f.filename %}<a class="btn sec sm" href="{{url_for('uploaded',fn=f.filename)}}">⬇ {{f.orig_name}}</a>{% endif %}
+{% for st in ['dev','testing','stable','deprecated'] if st!=f.status %}<form method="post" action="{{url_for('firmware_status',fid=f.id,status=st)}}"><button class="btn sec sm">→ {{st}}</button></form>{% endfor %}</div></div>
+{% else %}<p class="muted">No firmware versions yet.</p>{% endfor %}
+{% endblock %}

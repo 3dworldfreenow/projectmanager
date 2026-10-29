@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% block title %}Agreement{% endblock %}
+{% block pagetitle %}Agreement{% endblock %}
+{% block body %}
+<h1>Working Agreement</h1>
+{% if current %}
+<div class="card"><div class="row"><b style="flex:1">Version {{current.version}}</b><span class="muted">by {{current.author}} · {{current.ts}}</span></div>
+<pre style="margin:12px 0">{{current.body}}</pre>
+<a class="btn sec sm" href="{{url_for('agreement_pdf',aid=current.id)}}" target="_blank">📄 Export PDF (with acceptances & timestamps)</a>
+<div class="row">Accepted by: {% for u in current.accepted_by.split(',') if u %}<span class="tag ok">{{u}} ✓</span>{% endfor %}
+{% if user not in current.accepted_by.split(',') %}<form method="post"><button name="accept" value="1">I accept v{{current.version}}</button></form>{% endif %}</div></div>
+{% endif %}
+<h2>{{ 'Propose new version' if current else 'Write agreement' }}</h2>
+<form class="card" method="post"><textarea name="body" style="min-height:220px" placeholder="Scope of work, responsibilities (software vs hardware), payment, IP ownership, timelines, confidentiality…">{{ current.body if current }}</textarea><br><br><button>Save as new version</button></form>
+{% if versions|length > 1 %}<h2>Past versions</h2>{% for v in versions[1:] %}<details class="card"><summary>v{{v.version}} · {{v.author}} · {{v.ts}} · accepted: {{v.accepted_by or '—'}} · <a href="{{url_for('agreement_pdf',aid=v.id)}}" target="_blank">PDF</a></summary><pre style="margin-top:10px">{{v.body}}</pre></details>{% endfor %}{% endif %}
+{% endblock %}

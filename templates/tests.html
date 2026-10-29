@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block title %}Hardware tests{% endblock %}
+{% block pagetitle %}Hardware Tests{% endblock %}
+{% block body %}
+<h1>Hardware testing log</h1>
+<form class="card" method="post" enctype="multipart/form-data">
+  <div class="grid g2"><div><label>Test title</label><input name="title" required placeholder="Rain gauge calibration — 10 mm"></div>
+  <div><label>Hardware</label><select name="hardware_id"><option value="">— none —</option>{% for h in hw %}<option value="{{h.id}}">{{h.name}}</option>{% endfor %}</select></div>
+  <div><label>Firmware version tested</label><select name="firmware_id"><option value="">— none —</option>{% for f in fw %}<option value="{{f.id}}">{{f.version}}</option>{% endfor %}</select></div>
+  <div><label>Attach photos / CSV logs / scope shots</label><input type="file" name="files" multiple></div></div>
+  <label>Procedure</label><textarea name="procedure" placeholder="Steps taken, conditions, firmware version…"></textarea>
+  <label>Result / measurements</label><textarea name="result"></textarea>
+  <div class="row" style="margin-top:10px"><label style="margin:0"><input type="radio" name="passed" value="1" checked style="width:auto"> Pass</label><label style="margin:0"><input type="radio" name="passed" value="0" style="width:auto"> Fail</label><button>Log test</button></div>
+</form>
+{% for t in tests %}<div class="card"><div class="row">{% if t.passed %}<span class="tag ok">PASS</span>{% else %}<span class="tag bad">FAIL</span>{% endif %}<b style="flex:1">{{t.title}}</b>{% if t.hw_name %}<span class="tag">{{t.hw_name}}</span>{% endif %}{% if t.fw_version %}<span class="tag info">fw {{t.fw_version}}</span>{% endif %}<span class="muted">{{t.tested_by}} · {{t.ts}}</span></div>
+{% if t.procedure %}<p class="muted"><b>Procedure:</b> {{t.procedure}}</p>{% endif %}{% if t.result %}<p><b>Result:</b> {{t.result}}</p>{% endif %}
+{% for f in tfiles.get(t.id,[]) %}{% if f.filename|is_image %}<a href="{{url_for('uploaded',fn=f.filename)}}" target="_blank"><img src="{{url_for('uploaded',fn=f.filename)}}" style="max-width:160px;max-height:120px;border-radius:8px;margin:4px 4px 0 0"></a>{% else %}<a class="btn sec sm" href="{{url_for('uploaded',fn=f.filename)}}">📎 {{f.orig_name}}</a> {% endif %}{% endfor %}</div>{% else %}<p class="muted">No tests logged yet.</p>{% endfor %}
+{% endblock %}

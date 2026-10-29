@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}{{item.name}}{% endblock %}
+{% block pagetitle %}Hardware{% endblock %}
+{% block body %}
+<a href="{{url_for('hardware')}}">← Hardware list</a>
+<div class="row">{% if item.photo %}<img src="{{url_for('uploaded',fn=item.photo)}}" style="width:72px;height:72px;object-fit:cover;border-radius:12px">{% endif %}<h1 style="margin:0">{{item.name}} <span class="tag info">v{{item.version}}</span>{% if item.datasheet %} <a class="btn sec sm" href="{{item.datasheet}}" target="_blank">📄 Datasheet</a>{% endif %}</h1></div><br>
+<form class="card" method="post" enctype="multipart/form-data">
+  <div class="grid g4">
+    <div><label>Name</label><input name="name" value="{{item.name}}" required></div>
+    <div><label>Part no.</label><input name="part_no" value="{{item.part_no}}"></div>
+    <div><label>Qty</label><input name="qty" type="number" value="{{item.qty}}"></div>
+    <div><label>Unit cost</label><input name="cost" type="number" step="0.01" value="{{item.cost}}"></div>
+    <div><label>Supplier</label><input name="supplier" value="{{item.supplier}}"></div>
+    <div><label>Status</label><select name="status">{% for s in ['planned','ordered','received','tested','installed','replaced'] %}<option {% if s==item.status %}selected{% endif %}>{{s}}</option>{% endfor %}</select></div>
+    <div><label>Min. qty (low-stock alert)</label><input name="min_qty" type="number" value="{{item.min_qty or 0}}"></div>
+    <div><label>Datasheet link</label><input name="datasheet" value="{{item.datasheet or ''}}"></div>
+    <div><label>Part photo {% if item.photo %}(<a href="{{url_for('uploaded',fn=item.photo)}}" target="_blank">current</a>){% endif %}</label><input type="file" name="photo" accept="image/*"></div>
+  </div><label>Notes</label><input name="notes" value="{{item.notes}}"><br><br><button>Save (creates v{{item.version+1}})</button>
+</form>
+<h2>Version history</h2>
+<div class="card"><table><tr><th>Ver</th><th>Snapshot</th><th>By</th><th>When</th></tr>
+<tr><td><b>v{{item.version}}</b> (current)</td><td class="muted">—</td><td>{{item.updated_by}}</td><td>{{item.ts}}</td></tr>
+{% for h in history %}<tr><td>v{{h.version}}</td><td class="muted">{{h.snapshot}}</td><td>{{h.changed_by}}</td><td>{{h.ts}}</td></tr>{% endfor %}</table></div>
+<h2>Tests on this part</h2>
+<div class="card">{% for t in tests %}<div>{% if t.passed %}<span class="tag ok">PASS</span>{% else %}<span class="tag bad">FAIL</span>{% endif %} <b>{{t.title}}</b> <span class="muted">{{t.tested_by}} · {{t.ts}}</span><div class="muted">{{t.result}}</div></div>{% else %}<p class="muted">No tests yet. <a href="{{url_for('tests')}}">Log one</a></p>{% endfor %}</div>
+{% endblock %}

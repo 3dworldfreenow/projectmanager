@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}IoT PM{% endblock %}</title>
+<style>
+:root{--bg:#ffffff;--panel:#ffffff;--panel2:#f4f4f5;--line:#e4e6ea;--txt:#000000;--muted:#707579;--acc:#3390ec;--tg:#3390ec;--btn:#3390ec;--own:#effdde;--other:#ffffff;--warn:#e0a200;--bad:#e53935;--ok:#2e9e45;--r:12px}
+*{box-sizing:border-box}body{margin:0;font:15px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--txt);display:flex;min-height:100vh}
+a{color:var(--acc);text-decoration:none}
+nav{width:300px;background:var(--panel);border-right:1px solid var(--line);box-shadow:1px 0 0 var(--line);position:sticky;top:0;height:100vh;display:flex;flex-direction:column}
+.navhead{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+.avatar{width:42px;height:42px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:600;font-size:17px;color:#fff;flex-shrink:0}
+.av1{background:linear-gradient(135deg,#53a0ff,#2d7bdf)}.av2{background:linear-gradient(135deg,#ffb35c,#f2743a)}.av3{background:linear-gradient(135deg,#a0de7e,#54cb68)}
+.navhead .name{font-weight:600}.navhead .sub{font-size:13px;color:var(--muted)}
+nav select{width:calc(100% - 20px);margin:10px;background:var(--panel2);color:var(--txt);border:0;border-radius:var(--r);padding:9px 12px;font:inherit}
+nav a.item{display:flex;align-items:center;gap:12px;padding:8px 12px;color:var(--txt);font-size:15px}
+nav a.item .ico{width:40px;height:40px;border-radius:50%;background:var(--panel2);display:inline-flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+nav a.item.active{background:var(--btn)}nav a.item.active .ico{background:rgba(255,255,255,.18)}
+nav a.item:not(.active):hover{background:var(--panel2)}
+nav .spacer{flex:1}
+main{flex:1;padding:20px 28px;max-width:1100px;background:#f5f6f8}
+h1{margin:0 0 16px;font-size:22px;font-weight:600}
+h2{font-size:14px;margin:22px 0 8px;color:var(--acc);font-weight:600}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.grid{display:grid;gap:12px}.g4{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}.g2{grid-template-columns:1fr 1fr}
+.stat .n{font-size:28px;font-weight:600;color:var(--acc)}.stat .l{color:var(--muted);font-size:13px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-size:12px;font-weight:500}tr:last-child td{border-bottom:0}
+input,textarea,select{width:100%;background:var(--panel2);color:var(--txt);border:0;border-radius:var(--r);padding:10px 12px;font:inherit;outline:none}
+input:focus,textarea:focus{box-shadow:0 0 0 2px var(--btn)}textarea{min-height:90px}
+label{font-size:12px;color:var(--muted);display:block;margin:8px 0 4px}
+button,.btn{background:var(--btn);color:#fff;border:0;border-radius:var(--r);padding:9px 16px;font-weight:500;cursor:pointer;font:inherit;display:inline-block}
+button:hover,.btn:hover{filter:brightness(1.1)}
+.btn.sec{background:var(--panel2);color:var(--txt)}.btn.danger{background:var(--bad)}.btn.sm,button.sm{padding:5px 11px;font-size:13px}
+.badge{margin-left:auto;background:#3390ec;color:#fff;border-radius:999px;font-size:12px;padding:1px 8px;font-weight:600}nav a.item.active .badge{background:#fff;color:#3390ec}
+.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;background:var(--panel2);color:var(--muted)}
+.tag.ok{background:rgba(77,205,94,.15);color:var(--ok)}.tag.bad{background:rgba(229,80,90,.15);color:var(--bad)}.tag.warn{background:rgba(245,184,66,.15);color:var(--warn)}.tag.info{background:rgba(42,171,238,.15);color:var(--acc)}
+.flash{background:#fff6d8;color:var(--warn);padding:10px;border-radius:var(--r);margin-bottom:12px}
+.muted{color:var(--muted);font-size:13px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+pre{white-space:pre-wrap;font:inherit;margin:0}
+details summary{cursor:pointer}
+.topbar{display:none}
+@media(max-width:800px){
+  body{flex-direction:column}
+  .topbar{display:flex;align-items:center;gap:12px;background:var(--btn);color:#fff;padding:8px 12px;position:sticky;top:0;z-index:20;min-height:56px}.topbar .t small{color:rgba(255,255,255,.8)}.topbar button{color:#fff}
+  .topbar .t{flex:1;font-weight:600;font-size:17px}.topbar .t small{display:block;font-weight:400;font-size:12px}
+  .topbar button{background:transparent;padding:8px 10px;font-size:22px;line-height:1}
+  nav{display:none;position:fixed;inset:56px 0 0 0;height:auto;width:100%;z-index:19;overflow-y:auto;border-right:0}
+  nav.open{display:flex}
+  main{padding:12px;max-width:100%}
+  h1{font-size:19px}
+  .g2{grid-template-columns:1fr}.g4{grid-template-columns:1fr 1fr}
+  .stat .n{font-size:24px}
+  .card{padding:12px}
+  .card:has(table){overflow-x:auto}table{min-width:560px}
+  button,.btn{padding:11px 16px;min-height:44px}.btn.sm,button.sm{min-height:36px;padding:7px 12px}
+  input,textarea,select{font-size:16px;padding:11px 12px}
+  .row>form{flex-shrink:0}
+}
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+{% if user %}
+<div class="topbar"><button type="button" onclick="document.querySelector('nav').classList.toggle('open')">☰</button><div class="t">{% block pagetitle %}IoT PM{% endblock %}<small>{{ projects|selectattr('id','equalto',current_pid)|map(attribute='name')|first }}</small></div>{% if unread and request.endpoint!='chat' %}<a href="{{url_for('chat')}}" class="badge" style="background:#fff;color:#3390ec;margin:0">💬 {{unread}}</a>{% endif %}<span class="avatar av1" style="width:34px;height:34px;font-size:14px">{{user[0]|upper}}</span></div>
+<nav>
+  <div class="navhead"><span class="avatar av1">{{user[0]|upper}}</span><div><div class="name">{{user}}</div><div class="sub">{{role}}</div></div></div>
+  <form><select onchange="location='/project/'+this.value">
+    {% for p in projects %}<option value="{{p.id}}" {% if p.id==current_pid %}selected{% endif %}>{{p.name}}</option>{% endfor %}
+  </select></form>
+  {% set nav = [('dashboard','Dashboard','📊'),('chat','Chat','💬'),('calls','Calls','📼'),('activity','Activity','🕒'),('docs','Documents','📄'),('agreement','Agreement','🤝'),('hardware','Hardware','🔧'),('tests','Hardware Tests','🧪'),('research','Research / Tasks','🔬'),('firmware','Firmware Versions','💾'),('milestones','Milestones & Payments','💰')] %}
+  {% for ep,label,ic in nav %}<a class="item {% if request.endpoint==ep or (ep=='hardware' and request.endpoint=='hardware_item') %}active{% endif %}" href="{{url_for(ep)}}"><span class="ico">{{ic}}</span>{{label}}{% if ep=='chat' and unread %}<span class="badge">{{unread}}</span>{% elif ep=='calls' and missed %}<span class="badge">{{missed}} missed</span>{% endif %}</a>{% endfor %}
+  <div class="spacer"></div>
+  {% if is_admin %}<a class="item {% if request.endpoint=='users' %}active{% endif %}" href="{{url_for('users')}}"><span class="ico">👥</span>Team members</a>{% endif %}
+  <a class="item" href="{{url_for('password')}}"><span class="ico">🔑</span>Change password</a>
+  <a class="item" href="{{url_for('logout')}}"><span class="ico">⏏</span>Logout</a>
+</nav>
+{% endif %}
+<main>
+{% with m = get_flashed_messages() %}{% for x in m %}<div class="flash">{{x}}</div>{% endfor %}{% endwith %}
+{% block body %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body></html>

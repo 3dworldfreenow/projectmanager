@@ -1,0 +1,46 @@
+{% extends "base.html" %}{% block title %}Dashboard{% endblock %}
+{% block pagetitle %}Dashboard{% endblock %}
+{% block body %}
+<h1>Dashboard <span class="muted" style="font-weight:400;font-size:14px">· {{ projects|selectattr('id','equalto',current_pid)|map(attribute='name')|first }}</span></h1>
+<div class="grid g4">
+  <div class="card stat"><div class="n">{{stats.messages}}</div><div class="l">Chat messages</div></div>
+  <div class="card stat"><div class="n">{{stats.calls}}</div><div class="l">Recorded calls</div></div>
+  <div class="card stat"><div class="n">{{stats.hardware}}</div><div class="l">Hardware items</div></div>
+  <div class="card stat"><div class="n">{{stats.docs}}</div><div class="l">Documents</div></div>
+  <div class="card stat"><div class="n" style="color:var(--ok)">{{stats.tests_pass}} <span class="muted">/ <span style="color:var(--bad)">{{stats.tests_fail}}</span></span></div><div class="l">Tests pass / fail</div></div>
+  <div class="card stat"><div class="n">{{stats.research_open}} <span class="muted">/ {{stats.research_done}}</span></div><div class="l">Research open / done</div></div>
+</div>
+<div class="grid g2">
+  <div>
+    <h2>Open research & tasks</h2>
+    <div class="card">
+      {% if tasks %}<table>{% for t in tasks %}<tr><td><b>{{t.title}}</b><br><span class="muted">{{t.owner}} · due {{t.due or '—'}}</span></td>
+      <td><span class="tag {{ 'bad' if t.priority=='high' else 'warn' if t.priority=='medium' else '' }}">{{t.priority}}</span> <span class="tag info">{{t.status}}</span></td></tr>{% endfor %}</table>
+      {% else %}<p class="muted">Nothing open. <a href="{{url_for('research')}}">Add a task</a></p>{% endif %}
+    </div>
+    <h2>Agreement</h2>
+    <div class="card">
+      {% if agreement %}<b>v{{agreement.version}}</b> by {{agreement.author}} · {{agreement.ts}}<br>
+      Accepted by: {% for u in agreement.accepted_by.split(',') if u %}<span class="tag ok">{{u}}</span>{% else %}<span class="tag warn">nobody yet</span>{% endfor %}
+      {% else %}<p class="muted">No agreement written yet. <a href="{{url_for('agreement')}}">Write it</a></p>{% endif %}
+    </div>
+  </div>
+  <div>
+    <h2>Recent chat</h2>
+    <div class="card">
+      {% for m in recent_msgs %}<div><b>{{m.sender}}</b> <span class="muted">{{m.ts}}</span><br>{{m.body}}</div><hr style="border:0;border-top:1px solid var(--line)">{% else %}<p class="muted">No messages yet.</p>{% endfor %}
+      <a class="btn sm" href="{{url_for('chat')}}">Open chat</a>
+    </div>
+    <h2>Recent calls</h2>
+    <div class="card">
+      {% for c in recent_calls %}<div>📞 {{c.caller}} → {{c.callee}} <span class="muted">{{c.started}}</span>
+      {% if c.recording %}<span class="tag ok">recorded</span>{% else %}<span class="tag warn">no recording</span>{% endif %}</div>{% else %}<p class="muted">No calls yet.</p>{% endfor %}
+      <a class="btn sm" href="{{url_for('chat')}}">Start a call</a>
+    </div>
+  </div>
+</div>
+<h2>New project</h2>
+<form class="card row" method="post" action="{{url_for('add_project')}}">
+  <input name="name" placeholder="Project name" required style="flex:1"><input name="description" placeholder="Description" style="flex:2"><button>Add</button>
+</form>
+{% endblock %}

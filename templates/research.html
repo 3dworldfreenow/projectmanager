@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block title %}Research{% endblock %}
+{% block pagetitle %}Research{% endblock %}
+{% block body %}
+<h1>Research & tasks</h1>
+<form class="card" method="post">
+  <div class="grid g4"><div style="grid-column:span 2"><label>Title</label><input name="title" required placeholder="Compare anemometer options (hall vs optical)"></div>
+  <div><label>Owner</label><select name="owner">{% for u in users %}<option {% if u==user %}selected{% endif %}>{{u}}</option>{% endfor %}</select></div>
+  <div><label>Priority</label><select name="priority"><option>high</option><option selected>medium</option><option>low</option></select></div></div>
+  <div class="grid g2"><div><label>Details / findings</label><textarea name="details"></textarea></div><div><label>Due</label><input name="due" type="date"></div></div>
+  <br><button>Add</button>
+</form>
+<div class="card"><table><tr><th>Task</th><th>Owner</th><th>Priority</th><th>Due</th><th>Status</th><th></th></tr>
+{% for r in items %}<tr style="{{ 'opacity:.5' if r.status=='done' }}"><td><b>{{r.title}}</b>
+<details><summary class="muted">{{ (r.details or 'add findings…')[:80] }}</summary>
+<form method="post" action="{{url_for('research_details',rid=r.id)}}"><textarea name="details">{{r.details}}</textarea><button class="btn sec sm">Save findings</button></form>
+<div style="margin-top:6px">{% for f in files.get(r.id,[]) %}<div>{% if f.filename|is_image %}<a href="{{url_for('uploaded',fn=f.filename)}}" target="_blank"><img src="{{url_for('uploaded',fn=f.filename)}}" style="max-width:160px;border-radius:6px"></a><br>{% endif %}<a href="{{url_for('uploaded',fn=f.filename)}}">📎 {{f.orig_name}}</a> <span class="muted">{{f.uploaded_by}}</span></div>{% endfor %}
+<form method="post" action="{{url_for('research_file',rid=r.id)}}" enctype="multipart/form-data" class="row"><input type="file" name="file" style="width:auto"><button class="btn sec sm">Attach</button></form></div></details></td><td>{{r.owner}}</td>
+<td><span class="tag {{ 'bad' if r.priority=='high' else 'warn' if r.priority=='medium' else '' }}">{{r.priority}}</span></td><td>{{r.due or '—'}}</td><td><span class="tag {{ 'ok' if r.status=='done' else 'info' }}">{{r.status}}</span></td>
+<td class="row">{% for s in ['todo','doing','done'] if s!=r.status %}<form method="post" action="{{url_for('research_status',rid=r.id,status=s)}}"><button class="btn sec sm">{{s}}</button></form>{% endfor %}</td></tr>
+{% else %}<tr><td colspan="6" class="muted">Nothing yet.</td></tr>{% endfor %}</table></div>
+{% endblock %}

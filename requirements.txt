@@ -1,0 +1,4 @@
+flask>=3.0
+werkzeug>=3.0
+reportlab>=4.0   # PDF export (agreement, invoice); falls back to print-to-PDF page if missing
+openpyxl>=3.1    # BOM Excel export; falls back to CSV if missing

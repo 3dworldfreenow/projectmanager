@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+iotpm.db
+uploads/*
+!uploads/.gitkeep
+!uploads/recordings/
+uploads/recordings/*
+!uploads/recordings/.gitkeep
+screenshot_*.png
+.env
