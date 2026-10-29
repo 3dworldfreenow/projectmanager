@@ -246,11 +246,22 @@ $('btnHang').onclick=()=>{hangup(true);setStatus('call ended');};
 let facing='user',muted=false,camOff=false;
 $('btnMute').onclick=()=>{if(!local)return;muted=!muted;local.getAudioTracks().forEach(t=>t.enabled=!muted);$('btnMute').classList.toggle('off',muted);$('btnMute').textContent=muted?'🔇':'🎙';};
 $('btnCam').onclick=()=>{if(!local)return;camOff=!camOff;local.getVideoTracks().forEach(t=>t.enabled=!camOff);$('btnCam').classList.toggle('off',camOff);};
-$('btnFlip').onclick=async()=>{if(!local||kind!=='video')return;facing=facing==='user'?'environment':'user';
- try{const ns=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:640},height:{ideal:480}}});const nt=ns.getVideoTracks()[0];
-  const sender=pc&&pc.getSenders().find(s=>s.track&&s.track.kind==='video');if(sender)await sender.replaceTrack(nt);
-  local.getVideoTracks().forEach(t=>{t.stop();local.removeTrack(t);});local.addTrack(nt);$('local').srcObject=local;nt.enabled=!camOff;
-  $('local').classList.toggle('mirror',facing==='user');}catch(e){alert('Could not switch camera: '+e.message);}};
+$('btnFlip').onclick=async()=>{if(!local||kind!=='video'||$('btnFlip').disabled)return;$('btnFlip').disabled=true;
+ const old=local.getVideoTracks()[0];const want=facing==='user'?'environment':'user';
+ // Android can't open a second camera while the first is live: stop the current one FIRST
+ if(old){old.stop();local.removeTrack(old);}
+ const attempts=[{video:{facingMode:{exact:want}}},{video:{facingMode:want}}];
+ try{const devs=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
+   if(devs.length>1&&old){const cur=old.getSettings().deviceId;const other=devs.find(d=>d.deviceId!==cur);if(other)attempts.push({video:{deviceId:{exact:other.deviceId}}});}}catch(e){}
+ let ns=null,err=null;
+ for(const c of attempts){try{ns=await navigator.mediaDevices.getUserMedia(c);break;}catch(e){err=e;}}
+ if(!ns){try{ns=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing}});}catch(e){}  // get the original camera back
+   alert('Could not switch camera'+(err?': '+err.message:'')+(ns?'. Kept the current camera.':'. Camera is off — tap 🔄 again to retry.'));}
+ else facing=want;
+ if(ns){const nt=ns.getVideoTracks()[0];const sender=pc&&pc.getSenders().find(x=>x.track&&x.track.kind==='video'||x.track===null);
+  if(sender){try{await sender.replaceTrack(nt);}catch(e){}}
+  local.addTrack(nt);$('local').srcObject=local;nt.enabled=!camOff;$('local').classList.toggle('mirror',facing==='user');}
+ $('btnFlip').disabled=false;};
 function setFull(on){$('callpanel').classList.toggle('full',on);document.body.classList.toggle('incall',on);$('btnFull').textContent=on?'🗗':'⛶';if(on&&$('callpanel').requestFullscreen)$('callpanel').requestFullscreen().catch(()=>{});else if(!on&&document.fullscreenElement)document.exitFullscreen().catch(()=>{});}
 $('btnFull').onclick=()=>setFull(!$('callpanel').classList.contains('full'));
 document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement)$('callpanel').classList.remove('full');});
