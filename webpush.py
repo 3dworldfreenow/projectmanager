@@ -90,8 +90,10 @@ def send(subscription: dict, data: dict, private_pem: str, subject: str, ttl=60)
 def send_async(subscriptions, data, private_pem, subject, on_dead=None):
     """Fire-and-forget to many subscriptions; on_dead(endpoint) called for 404/410."""
     def run():
+        import logging
         for sub in subscriptions:
-            st, _ = send(sub, data, private_pem, subject)
+            st, txt = send(sub, data, private_pem, subject)
+            logging.getLogger("rainflow").warning("push %s -> HTTP %s %s", sub["endpoint"].split("/")[2], st, txt[:100])
             if st in (404, 410) and on_dead:
                 try: on_dead(sub["endpoint"])
                 except Exception: pass

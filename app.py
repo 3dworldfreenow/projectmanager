@@ -601,7 +601,7 @@ def calls():
     recs = {}
     for c in rows:
         files = sorted(_g.glob(os.path.join(RECORDINGS, f"call_{c['id']}_*.webm")))
-        recs[c["id"]] = [(os.path.basename(f), os.path.basename(f)[len(f"call_{c['id']}_"):-5].replace("guest_", "guest ").replace("_", " ")) for f in files if os.path.getsize(f) > 0]
+        recs[c["id"]] = [(os.path.basename(f), os.path.basename(f)[len(f"call_{c['id']}_"):-5].replace("guest_", "guest ").replace("_", " ") + f" · {os.path.getsize(f)/1048576:.1f} MB") for f in files if os.path.getsize(f) > 0]
     return render_template("calls.html", calls=rows, missed_rows=missed_rows, recs=recs)
 
 @app.route("/call/start", methods=["POST"])
@@ -660,7 +660,8 @@ def call_notes(cid):
 @app.route("/recordings/<path:fn>")
 @login_required
 def recording(fn):
-    return send_from_directory(RECORDINGS, fn)
+    r = send_from_directory(RECORDINGS, fn, mimetype="video/webm", conditional=True)
+    r.headers["Accept-Ranges"] = "bytes"; return r
 
 # -------------------------------------------------------------- activity ----
 @app.route("/activity")

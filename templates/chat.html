@@ -197,10 +197,13 @@ function startRecording(remote){const ctx=new AudioContext(),dest=ctx.createMedi
    (function draw(){g.fillStyle='#000';g.fillRect(0,0,1280,480);try{g.drawImage($('local'),0,0,640,480);g.drawImage($('remote'),640,0,640,480);}catch(e){}
      if(recorder&&recorder.state==='recording')requestAnimationFrame(draw);})();
    tracks.push(...cv.captureStream(15).getVideoTracks());}
- const mime=['video/webm;codecs=vp8,opus','video/webm','video/mp4'].find(m=>MediaRecorder.isTypeSupported(m))||'';
- try{recorder=new MediaRecorder(new MediaStream(tracks),mime?{mimeType:mime}:{});}catch(e){setStatus('connected (recording not supported in this browser)');return;}
+ const list=kind==='video'?['video/webm;codecs=vp8,opus','video/webm;codecs=vp9,opus','video/webm','video/mp4']:['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'];
+ const mime=list.find(m=>MediaRecorder.isTypeSupported(m))||'';
+ try{recorder=new MediaRecorder(new MediaStream(tracks),mime?{mimeType:mime}:{});}catch(e){try{recorder=new MediaRecorder(new MediaStream(tracks));}catch(e2){setStatus('connected (recording not supported: '+e2.message+')');return;}}
+ window.recBytes=0;
  // server-side recording: every 2 s chunk is streamed to the server immediately
- recorder.ondataavailable=e=>{if(e.data.size&&callId)fetch(`/call/${callId}/chunk`,{method:'POST',body:e.data,keepalive:true});};
+ recorder.ondataavailable=e=>{if(e.data.size&&callId){window.recBytes+=e.data.size;fetch(`/call/${callId}/chunk`,{method:'POST',body:e.data,keepalive:true}).then(r=>{if(!r.ok)$('rec').textContent='REC ⚠ upload '+r.status;}).catch(()=>{$('rec').textContent='REC ⚠ upload failed';});}};
+ recorder.onerror=e=>{$('rec').textContent='REC ⚠ '+(e.error&&e.error.name||'error');};
  recorder.onstop=finish;recorder.start(2000);$('rec').classList.add('on');}
 async function finish(){$('rec').classList.remove('on');recorder=null;if(!callId)return;setStatus('recording saved on server ✓');
  await fetch(`/call/${callId}/end`,{method:'POST'});

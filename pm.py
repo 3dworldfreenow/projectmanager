@@ -156,6 +156,7 @@ def push(users, title, body, url="/", urgent=False, even_if_online=False):
     from app import DB
     def on_dead(endpoint):
         c = _sq.connect(DB); c.execute("DELETE FROM push_subs WHERE endpoint=?", (endpoint,)); c.commit(); c.close()
+    app_log("push -> %d device(s): %s", len(subs), title)
     webpush.send_async(subs, {"title": title, "body": body, "url": url, "urgent": urgent}, keys["pem"], subject, on_dead)
 
 @pm.route("/push/key")
@@ -184,8 +185,27 @@ def push_unsubscribe():
 @pm.route("/push/test", methods=["POST"])
 @login_required
 def push_test():
-    push([session["user"]], "Rainflow", "Push notifications are working on this device 🎉", "/notifications", even_if_online=True)
-    return jsonify(ok=True)
+    """Synchronous test so the UI can show exactly what the push service answered."""
+    try:
+        import webpush
+    except Exception as e:
+        return jsonify(ok=False, error=f"cryptography missing on server: {e}")
+    d = db(); keys = vapid_keys(); results = []
+    subject = "mailto:" + os.environ.get("VAPID_EMAIL", "admin@example.com")
+    for r in d.execute("SELECT sub FROM push_subs WHERE username=?", (session["user"],)):
+        sub = json.loads(r["sub"])
+        st, txt = webpush.send(sub, {"title": "Rainflow", "body": "Push notifications are working on this device 🎉", "url": "/notifications", "urgent": True}, keys["pem"], subject)
+        host = sub["endpoint"].split("/")[2]
+        results.append(f"{host}: HTTP {st} {txt[:120]}")
+        if st in (404, 410):
+            d.execute("DELETE FROM push_subs WHERE endpoint=?", (sub["endpoint"],)); d.commit()
+    app_log("push test by %s: %s", session["user"], results)
+    return jsonify(ok=bool(results) and all(" HTTP 20" in x for x in results), results=results or ["no device subscribed on this account"])
+
+def app_log(msg, *a):
+    try:
+        import logging; logging.getLogger("rainflow").warning(msg, *a)
+    except Exception: pass
 
 @pm.route("/push/status")
 @login_required

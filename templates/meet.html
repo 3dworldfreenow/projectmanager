@@ -100,8 +100,8 @@ function startRecording(){if(recorder||!callId)return;
    if(recorder&&recorder.state==='recording')requestAnimationFrame(draw);else setTimeout(draw,500);})();
  const tracks=[...dest.stream.getAudioTracks(),...cv.captureStream(12).getVideoTracks()];
  const mime=['video/webm;codecs=vp8,opus','video/webm','video/mp4'].find(m=>MediaRecorder.isTypeSupported(m))||'';
- try{recorder=new MediaRecorder(new MediaStream(tracks),mime?{mimeType:mime}:{});}catch(e){st('in call (no recording support)');return;}
- recorder.ondataavailable=e=>{if(e.data.size)fetch(`/call/${callId}/chunk`,{method:'POST',body:e.data,keepalive:true}).catch(()=>{});};
+ try{recorder=new MediaRecorder(new MediaStream(tracks),mime?{mimeType:mime}:{});}catch(e){try{recorder=new MediaRecorder(new MediaStream(tracks));}catch(e2){st('in call (no recording: '+e2.message+')');return;}}
+ recorder.ondataavailable=e=>{if(e.data.size)fetch(`/call/${callId}/chunk`,{method:'POST',body:e.data,keepalive:true}).then(r=>{if(!r.ok)$('rec').textContent='REC ⚠ '+r.status;}).catch(()=>{$('rec').textContent='REC ⚠ upload failed';});};
  recorder.start(2000);$('rec').classList.add('on');}
 
 // ---- controls
