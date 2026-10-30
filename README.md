@@ -66,5 +66,20 @@ and `TELEGRAM_BOT_TOKEN=123:abc` (create a bot with @BotFather; each user puts t
 and `systemctl daemon-reload && systemctl restart rainflow`. Incoming calls ring on every page of the app (banner + sound), with a browser notification if the tab is in the background.
 For production, serve with `waitress-serve --port 5000 app:app` instead of the dev server.
 
-## Data
-Everything is in `iotpm.db` (SQLite) + the `uploads/` folder (files, firmware, `recordings/`) — back up both.
+## Backups
+Everything lives in `iotpm.db` (SQLite) + `uploads/` (files, firmware, `recordings/`).
+
+**Manual** — Team members page (admin) → *Backup & export*: download a backup zip (with or without call recordings), or export all data as CSV/JSON.
+
+**Automatic (nightly, on the server)** — keeps 14 days in `backups/`:
+```
+chmod +x /opt/rainflow/projectmanager/backup.sh
+(crontab -l 2>/dev/null; echo "30 2 * * * /opt/rainflow/projectmanager/backup.sh >> /var/log/rainflow-backup.log 2>&1") | crontab -
+```
+
+**Google Drive (off-server copy, recommended)** — connect once in the browser, then every backup is uploaded to a *Rainflow backups* folder in that Drive (newest 30 kept):
+1. Create free OAuth credentials: https://console.cloud.google.com → *APIs & Services* → *Enable APIs* → enable **Google Drive API** → *Credentials* → *Create credentials* → *OAuth client ID* → type **Web application** → Authorised redirect URI: `https://iot.opirsys.com/admin/gdrive/callback` → copy the client ID and secret. (On the *OAuth consent screen* add your Google account as a test user.)
+2. Add to the service file: `GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… BACKUP_TOKEN=<random string>` and restart.
+3. Team members → *Connect Google Drive* → sign in → done. *Back up to Drive now* uploads immediately; `backup.sh` uploads nightly (it uses `BACKUP_TOKEN` — put `BACKUP_TOKEN=…` and `PORT=5020` in root's crontab environment or export them at the top of backup.sh).
+
+**Restore** — stop the service, unzip the backup into the app folder (replacing `iotpm.db` and `uploads/`), start the service.

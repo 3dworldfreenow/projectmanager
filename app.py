@@ -1152,6 +1152,191 @@ def invoice(mid):
     if m["status"] == "paid": meta.append(("Paid on", f"{m['paid_on']} ref {m['paid_ref'] or ''}"))
     return _pdf("Invoice", [table, "Thank you."], meta)
 
+# ---------------------------------------------------------------- backup ----
+def make_backup_zip(include_rec=False, by="system"):
+    """Create a backup zip (consistent DB snapshot + uploads). Returns temp path."""
+    import zipfile, tempfile
+    tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False); tmp.close()
+    with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED) as z:
+        snap = tempfile.NamedTemporaryFile(suffix=".db", delete=False); snap.close()
+        src = sqlite3.connect(DB); dst = sqlite3.connect(snap.name); src.backup(dst); dst.close(); src.close()
+        z.write(snap.name, "iotpm.db"); os.unlink(snap.name)
+        for root, dirs, files in os.walk(UPLOADS):
+            if not include_rec and os.path.abspath(root).startswith(os.path.abspath(RECORDINGS)):
+                continue
+            for f in files:
+                if f == ".gitkeep": continue
+                full = os.path.join(root, f); z.write(full, os.path.relpath(full, BASE))
+        z.writestr("README-RESTORE.txt", "Restore: stop the service, copy iotpm.db and the uploads/ folder into the app folder, start the service.\n"
+                   f"Created {now()} by {by}. Recordings included: {include_rec}.\n")
+    return tmp.name
+
+@app.route("/admin/backup")
+@admin_required
+def admin_backup():
+    from flask import send_file
+    include_rec = request.args.get("recordings") == "1"
+    path = make_backup_zip(include_rec, session["user"])
+    log_activity("downloaded a backup", "with recordings" if include_rec else "without recordings", "/users"); db().commit()
+    name = f"rainflow-backup-{datetime.datetime.now():%Y%m%d-%H%M}{'-full' if include_rec else ''}.zip"
+    r = send_file(path, as_attachment=True, download_name=name)
+    r.call_on_close(lambda: os.path.exists(path) and os.unlink(path)); return r
+
+@app.route("/admin/export")
+@admin_required
+def admin_export():
+    """Portable data export: every table as CSV + one JSON (no binary files, no password hashes)."""
+    import io, zipfile, csv, json as _json, tempfile
+    from flask import send_file
+    tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False); tmp.close()
+    d = db(); allj = {}
+    with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED) as z:
+        for (t,) in d.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
+            rows = d.execute(f"SELECT * FROM {t}").fetchall()
+            cols = [c[1] for c in d.execute(f"PRAGMA table_info({t})")]
+            if t == "users": cols = [c for c in cols if c != "pw_hash"]
+            if t == "meta": continue
+            buf = io.StringIO(); w = csv.writer(buf); w.writerow(cols)
+            for r in rows: w.writerow([r[c] for c in cols])
+            z.writestr(f"csv/{t}.csv", buf.getvalue()); allj[t] = [{c: r[c] for c in cols} for r in rows]
+        z.writestr("rainflow-export.json", _json.dumps(allj, indent=1, default=str))
+    log_activity("exported data (CSV/JSON)", "", "/users"); db().commit()
+    r = send_file(tmp.name, as_attachment=True, download_name=f"rainflow-export-{datetime.datetime.now():%Y%m%d}.zip")
+    r.call_on_close(lambda: os.path.exists(tmp.name) and os.unlink(tmp.name)); return r
+
+@app.route("/admin/backup/status")
+@admin_required
+def backup_status():
+    import glob as _g
+    size = lambda p: sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(p) for f in fs) if os.path.isdir(p) else 0
+    auto = sorted(_g.glob(os.path.join(BASE, "backups", "rainflow-*")))
+    g = gdrive_status()
+    return jsonify(db_mb=round(os.path.getsize(DB) / 1048576, 1), uploads_mb=round((size(UPLOADS) - size(RECORDINGS)) / 1048576, 1),
+                   recordings_mb=round(size(RECORDINGS) / 1048576, 1),
+                   auto_backups=[(os.path.basename(a), round(os.path.getsize(a) / 1048576, 1)) for a in auto[-5:]], gdrive=g)
+
+# ----------------------------------------------------------- google drive ----
+# Connect once in the browser (OAuth); the server then uploads backups to a
+# "Rainflow backups" folder in that Google Drive. Needs GOOGLE_CLIENT_ID /
+# GOOGLE_CLIENT_SECRET in the environment (free, see README).
+import urllib.request, urllib.parse, json as _json
+
+def _meta_get(k, default=None):
+    r = db().execute("SELECT value FROM meta WHERE key=?", (k,)).fetchone()
+    return _json.loads(r["value"]) if r else default
+
+def _meta_set(k, v):
+    db().execute("INSERT OR REPLACE INTO meta VALUES(?,?)", (k, _json.dumps(v))); db().commit()
+
+def gdrive_configured():
+    return bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET"))
+
+def gdrive_status():
+    t = _meta_get("gdrive")
+    return {"configured": gdrive_configured(), "connected": bool(t and t.get("refresh_token")),
+            "email": (t or {}).get("email"), "last": (t or {}).get("last"), "last_error": (t or {}).get("last_error")}
+
+def _gdrive_token():
+    t = _meta_get("gdrive") or {}
+    data = urllib.parse.urlencode({"client_id": os.environ["GOOGLE_CLIENT_ID"], "client_secret": os.environ["GOOGLE_CLIENT_SECRET"],
+                                   "refresh_token": t["refresh_token"], "grant_type": "refresh_token"}).encode()
+    with urllib.request.urlopen(urllib.request.Request("https://oauth2.googleapis.com/token", data), timeout=20) as r:
+        return _json.loads(r.read())["access_token"]
+
+def _gapi(method, url, token, body=None, ctype="application/json"):
+    req = urllib.request.Request(url, data=body, method=method, headers={"Authorization": "Bearer " + token, "Content-Type": ctype})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return _json.loads(r.read() or b"{}")
+
+def gdrive_upload(path, name):
+    """Upload a file into the 'Rainflow backups' folder (created on first use)."""
+    tok = _gdrive_token(); t = _meta_get("gdrive") or {}
+    folder = t.get("folder")
+    if not folder:
+        q = urllib.parse.quote("name='Rainflow backups' and mimeType='application/vnd.google-apps.folder' and trashed=false")
+        found = _gapi("GET", f"https://www.googleapis.com/drive/v3/files?q={q}&fields=files(id)", tok).get("files")
+        folder = found[0]["id"] if found else _gapi("POST", "https://www.googleapis.com/drive/v3/files", tok,
+                                                     _json.dumps({"name": "Rainflow backups", "mimeType": "application/vnd.google-apps.folder"}).encode())["id"]
+        t["folder"] = folder; _meta_set("gdrive", t)
+    # resumable upload (works for large files)
+    meta = _json.dumps({"name": name, "parents": [folder]}).encode()
+    req = urllib.request.Request("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable", data=meta, method="POST",
+                                 headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json; charset=UTF-8",
+                                          "X-Upload-Content-Type": "application/zip", "X-Upload-Content-Length": str(os.path.getsize(path))})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        up = r.headers["Location"]
+    with open(path, "rb") as f:
+        req = urllib.request.Request(up, data=f.read(), method="PUT", headers={"Content-Type": "application/zip"})
+        with urllib.request.urlopen(req, timeout=600) as r:
+            res = _json.loads(r.read())
+    # keep only the newest 30 in Drive
+    q = urllib.parse.quote(f"'{folder}' in parents and trashed=false")
+    files = _gapi("GET", f"https://www.googleapis.com/drive/v3/files?q={q}&orderBy=createdTime desc&fields=files(id,name)&pageSize=100", tok).get("files", [])
+    for old in files[30:]:
+        try: _gapi("DELETE", f"https://www.googleapis.com/drive/v3/files/{old['id']}", tok)
+        except Exception: pass
+    t["last"] = now() + " · " + name; t["last_error"] = None; _meta_set("gdrive", t)
+    return res
+
+@app.route("/admin/gdrive/connect")
+@admin_required
+def gdrive_connect():
+    if not gdrive_configured():
+        flash("Admin: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the server first (see README)"); return redirect(url_for("users") + "#backup")
+    redirect_uri = (os.environ.get("APP_URL") or request.url_root.rstrip("/")) + "/admin/gdrive/callback"
+    session["gdrive_state"] = uuid.uuid4().hex
+    params = {"client_id": os.environ["GOOGLE_CLIENT_ID"], "redirect_uri": redirect_uri, "response_type": "code",
+              "scope": "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email",
+              "access_type": "offline", "prompt": "consent", "state": session["gdrive_state"]}
+    return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params))
+
+@app.route("/admin/gdrive/callback")
+@admin_required
+def gdrive_callback():
+    if request.args.get("state") != session.pop("gdrive_state", None) or not request.args.get("code"):
+        flash("Google Drive connection was cancelled or invalid"); return redirect(url_for("users") + "#backup")
+    redirect_uri = (os.environ.get("APP_URL") or request.url_root.rstrip("/")) + "/admin/gdrive/callback"
+    data = urllib.parse.urlencode({"code": request.args["code"], "client_id": os.environ["GOOGLE_CLIENT_ID"], "client_secret": os.environ["GOOGLE_CLIENT_SECRET"],
+                                   "redirect_uri": redirect_uri, "grant_type": "authorization_code"}).encode()
+    try:
+        with urllib.request.urlopen(urllib.request.Request("https://oauth2.googleapis.com/token", data), timeout=20) as r:
+            tok = _json.loads(r.read())
+        email = ""
+        try: email = _gapi("GET", "https://www.googleapis.com/oauth2/v2/userinfo", tok["access_token"]).get("email", "")
+        except Exception: pass
+        _meta_set("gdrive", {"refresh_token": tok["refresh_token"], "email": email})
+        log_activity("connected Google Drive for backups", email, "/users"); db().commit()
+        flash(f"Google Drive connected ({email}). Backups will be stored in the 'Rainflow backups' folder.")
+    except Exception as e:
+        flash("Google Drive connection failed: " + str(e)[:200])
+    return redirect(url_for("users") + "#backup")
+
+@app.route("/admin/gdrive/disconnect", methods=["POST"])
+@admin_required
+def gdrive_disconnect():
+    db().execute("DELETE FROM meta WHERE key='gdrive'"); db().commit()
+    flash("Google Drive disconnected"); return redirect(url_for("users") + "#backup")
+
+def _run_gdrive_backup(include_rec, by):
+    path = make_backup_zip(include_rec, by)
+    name = f"rainflow-backup-{datetime.datetime.now():%Y%m%d-%H%M}{'-full' if include_rec else ''}.zip"
+    try:
+        gdrive_upload(path, name); return True, name
+    except Exception as e:
+        t = _meta_get("gdrive") or {}; t["last_error"] = f"{now()} {str(e)[:200]}"; _meta_set("gdrive", t); return False, str(e)[:200]
+    finally:
+        if os.path.exists(path): os.unlink(path)
+
+@app.route("/admin/gdrive/backup", methods=["POST"])
+def gdrive_backup_now():
+    """Upload a backup to Drive. Called from the admin page, or by cron with X-Backup-Token (BACKUP_TOKEN env)."""
+    is_cron = os.environ.get("BACKUP_TOKEN") and request.headers.get("X-Backup-Token") == os.environ["BACKUP_TOKEN"]
+    if not is_cron and not session.get("is_admin"): return jsonify(ok=False), 403
+    if not gdrive_status()["connected"]: return jsonify(ok=False, error="Google Drive not connected")
+    ok, info = _run_gdrive_backup(request.args.get("recordings") == "1", "cron" if is_cron else session.get("user", "admin"))
+    if ok and not is_cron: log_activity("backed up to Google Drive", info, "/users"); db().commit()
+    return jsonify(ok=ok, info=info)
+
 # -------------------------------------------------------------- projects ----
 @app.route("/projects", methods=["POST"])
 @login_required

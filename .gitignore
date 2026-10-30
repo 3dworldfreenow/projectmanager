@@ -14,3 +14,4 @@ screenshot_*.png
 venv/
 env/
 .env/
+backups/
