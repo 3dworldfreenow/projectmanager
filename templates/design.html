@@ -12,8 +12,10 @@
 .legend .n{width:24px;height:24px;border-radius:50%;background:var(--blue);color:#fff;font-size:12px;font-weight:600;display:grid;place-items:center;flex-shrink:0}.legend .n.part{background:#188038}
 .legend .t{flex:1;min-width:0}.legend .t b{font-weight:500}.legend .t .s{font-size:12.5px;color:var(--muted)}
 .legend .x{background:none;border:0;color:var(--muted);padding:0;min-height:0;font-size:14px}
-#pinform{display:none;position:absolute;z-index:5;background:#fff;border-radius:12px;box-shadow:var(--sh2);padding:10px;width:260px}#pinform.on{display:block}
-#pinform input,#pinform select{margin-bottom:6px;padding:7px 10px}
+#pinform{display:none;position:fixed;z-index:60;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#fff;border-radius:16px;box-shadow:0 12px 40px -8px rgba(0,0,0,.45);padding:14px;width:min(380px,calc(100vw - 24px))}#pinform.on{display:block}
+#pinform h4{margin:0 0 8px;font-size:14px;font-weight:500}#pinform input,#pinform select{margin-bottom:8px;padding:9px 12px;font-size:15px}
+#pinform .row button{min-height:40px}
+@media(max-width:860px){ #pinform{bottom:calc(72px + env(safe-area-inset-bottom))}}
 .vlist .v{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}.vlist .v:last-child{border:0}.vlist .v.cur b{color:var(--blue)}
 .spec{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px}.spec label{margin:4px 0 2px}
 .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.toolbar .muted{font-size:12.5px}
@@ -32,7 +34,7 @@
     <div class="toolbar"><b>Tap on the image to add a numbered pin</b><span class="muted">· drag a pin to move it · tap a pin to edit</span><div style="flex:1"></div><a class="btn sec sm" href="{{url_for('uploaded',fn=cur.filename)}}" target="_blank">Open full size</a></div>
     <div class="viewer" id="viewer"><img id="img" src="{{url_for('uploaded',fn=cur.filename)}}" draggable="false">
       {% for p in pins %}<div class="pin {{ 'part' if p.hardware_id }}" data-id="{{p.id}}" style="left:{{p.x}}%;top:{{p.y}}%" title="{{p.label}}{% if p.part_name %} · {{p.part_name}}{% endif %}">{{loop.index}}</div>{% endfor %}
-      <div id="pinform"><input id="pf_label" placeholder="Label, e.g. U1 ESP32 / mounting hole"><select id="pf_part"><option value="">— link to a part (optional) —</option>{% for p in parts %}<option value="{{p.id}}">{{p.name}}{% if p.refs %} ({{p.refs}}){% endif %}</option>{% endfor %}</select><input id="pf_note" placeholder="Note (optional)"><div class="row" style="gap:6px"><button type="button" class="sm" onclick="savePin()">Save</button><button type="button" class="sec sm" onclick="closePin()">Cancel</button><button type="button" class="sec sm" id="pf_del" onclick="delPin()" style="margin-left:auto;color:var(--red)">Delete</button></div></div>
+      <div id="pinform"><h4 id="pf_title">New pin</h4><input id="pf_label" placeholder="Label, e.g. U1 ESP32 / mounting hole"><select id="pf_part"><option value="">— link to a part (optional) —</option>{% for p in parts %}<option value="{{p.id}}">{{p.name}}{% if p.refs %} ({{p.refs}}){% endif %}</option>{% endfor %}</select><input id="pf_note" placeholder="Note (optional)"><div class="row" style="gap:6px"><button type="button" onclick="savePin()">Save pin</button><button type="button" class="sec" onclick="closePin()">Cancel</button><button type="button" class="sec" id="pf_del" onclick="delPin()" style="margin-left:auto;color:var(--red)">Delete</button></div></div>
     </div>
     {% elif cur and is_pdf %}
     <div class="toolbar"><b>PDF</b><span class="muted">· pins work on images — export a PNG of the page to annotate it</span><div style="flex:1"></div><a class="btn sec sm" href="{{url_for('uploaded',fn=cur.filename)}}" target="_blank">Open</a></div>
@@ -89,11 +91,12 @@ const VID={{ cur.id if cur else 'null' }};const $=id=>document.getElementById(id
 const viewer=$('viewer'),img=$('img'),form=$('pinform');let editing=null,pending=null,drag=null,moved=false;
 if(viewer){
  function pct(e){const r=img.getBoundingClientRect();const p=e.touches?e.touches[0]:e;return {x:Math.max(0,Math.min(100,(p.clientX-r.left)/r.width*100)),y:Math.max(0,Math.min(100,(p.clientY-r.top)/r.height*100))};}
- function openForm(x,y,data){form.classList.add('on');form.style.left=Math.min(x,100-40)+'%';form.style.top=Math.min(y+2,85)+'%';
+ function openForm(x,y,data){form.classList.add('on');$('pf_title').textContent=data?'Edit pin':'New pin';
   $('pf_label').value=data?data.label:'';$('pf_part').value=data?(data.part||''):'';$('pf_note').value=data?data.note:'';$('pf_del').style.display=data?'':'none';$('pf_label').focus();}
- function closePin(){form.classList.remove('on');editing=null;pending=null;}
+ function closePin(){form.classList.remove('on');editing=null;pending=null;if(ghost)ghost.style.display='none';}
  window.closePin=closePin;
- img.addEventListener('click',e=>{if(moved){moved=false;return;}const p=pct(e);pending=p;editing=null;openForm(p.x,p.y,null);});
+ let ghost=null;
+ img.addEventListener('click',e=>{if(moved){moved=false;return;}const p=pct(e);pending=p;editing=null;if(!ghost){ghost=document.createElement('div');ghost.className='pin';ghost.style.background='var(--amber)';ghost.textContent='+';viewer.appendChild(ghost);}ghost.style.left=p.x+'%';ghost.style.top=p.y+'%';ghost.style.display='';openForm(p.x,p.y,null);});
  // existing pins: tap to edit, drag to move
  viewer.querySelectorAll('.pin').forEach(bind);
  function bind(el){
