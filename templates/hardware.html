@@ -16,8 +16,17 @@
 </style>{% endblock %}
 {% block body %}
 <div class="ph"><div><h1>Parts list (BOM)</h1><div class="sub">{{items|length}} parts · every component of the product, grouped by type</div></div>
-<div class="actions"><a class="btn sec" href="{{url_for('hw.designs')}}">Designs</a><a class="btn sec" href="{{url_for('hw.connections')}}">Connections</a><a class="btn sec" href="{{url_for('hardware_export')}}">Export Excel</a></div></div>
+<div class="actions"><span class="range" id="vtoggle" style="display:inline-flex;background:var(--surface2);border-radius:999px;padding:3px"><button type="button" data-v="simple" style="background:transparent;color:var(--ink2);padding:5px 14px;min-height:0;border:0;font-size:13px">Simple</button><button type="button" data-v="full" style="background:transparent;color:var(--ink2);padding:5px 14px;min-height:0;border:0;font-size:13px">Detailed</button></span><a class="btn sec" href="{{url_for('hw.designs')}}">Designs</a><a class="btn sec" href="{{url_for('hw.connections')}}">Connections</a><a class="btn sec" href="{{url_for('hardware_export')}}">Export Excel</a></div></div>
 
+<div class="vsimple">
+<div class="card tight"><table><tr><th>Part</th><th>Value</th><th>Qty/board</th><th>Have</th><th>Cost</th><th>Status</th><th>Supplier</th></tr>
+{% for h in items %}<tr><td><a href="{{url_for('hardware_item',hid=h.id)}}" style="color:var(--ink);font-weight:500">{{h.name}}</a>{% if h.refs %} <span class="muted" style="font-family:ui-monospace,monospace;font-size:12px">{{h.refs}}</span>{% endif %}{% if h.datasheet %} <a href="{{h.datasheet}}" target="_blank">📄</a>{% endif %}</td>
+<td>{{h.value or ''}}{% if h.package %} <span class="muted">{{h.package}}</span>{% endif %}</td><td>{{h.per_board or 1}}</td><td class="{{ 'short' if (h.qty or 0) < need[h.id] }}">{{h.qty or 0}}</td><td>₹{{'%g'|format(h.cost or 0)}}</td>
+<td><span class="tag {{ 'ok' if h.status in ('tested','installed','received') else 'warn' if h.status=='ordered' else '' }}">{{h.status}}</span></td><td class="muted">{{h.supplier or ''}}</td></tr>
+{% else %}<tr><td colspan="7"><div class="empty"><b>No parts yet</b>Switch to Detailed to add parts.</div></td></tr>{% endfor %}</table></div>
+<div class="row" style="margin-top:4px"><span class="muted">{{items|length}} parts · ₹{{'%.0f'|format(per_board_cost)}} per board · {{boards}} board{{'s' if boards>1}} · {{short|length}} still to buy</span><div style="flex:1"></div><button type="button" class="sec sm" onclick="setView('full')">+ Add parts / details</button></div>
+</div>
+<div class="vfull">
 <div class="sum">
   <div class="card stat"><div class="n num">₹{{'%.0f'|format(per_board_cost)}}</div><div class="l">cost per board (BOM)</div></div>
   <div class="card stat"><form method="post" class="row" style="gap:6px"><input name="boards" type="number" min="1" value="{{boards}}" style="width:70px;padding:6px 10px;font-size:20px"><button class="sec sm">Set</button></form><div class="l">boards to build</div></div>
@@ -64,5 +73,11 @@
 {% endfor %}
 {% for cat, rows in bom_groups.items() if cat not in HW_CATEGORIES %}<div class="cat"><h3>{{cat}}</h3><div class="card tight">{% for h in rows %}<div class="part"><span class="ph">🔧</span><div class="nm"><a href="{{url_for('hardware_item',hid=h.id)}}">{{h.name}}</a></div><div class="right">need {{need[h.id]}} · have {{h.qty or 0}}</div></div>{% endfor %}</div></div>{% endfor %}
 {% if not items %}<div class="card empty"><b>No parts yet</b>Use Quick add above — one line per component.</div>{% endif %}
+</div>
 {% endblock %}
-{% block scripts %}<script>function tab(i){document.querySelectorAll('.tabs2 button').forEach((b,j)=>b.classList.toggle('on',i===j));document.querySelectorAll('.pane').forEach((p,j)=>p.classList.toggle('on',i===j));}</script>{% endblock %}
+{% block scripts %}<script>
+function setView(v){document.querySelector('.vsimple').style.display=v==='simple'?'':'none';document.querySelector('.vfull').style.display=v==='full'?'':'none';
+ document.querySelectorAll('#vtoggle button').forEach(b=>{const on=b.dataset.v===v;b.style.background=on?'var(--surface)':'transparent';b.style.color=on?'var(--blue)':'var(--ink2)';b.style.boxShadow=on?'0 1px 2px rgba(60,64,67,.2)':'none';});try{localStorage.setItem('rf_bom_view',v);}catch(e){}}
+document.querySelectorAll('#vtoggle button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
+let v='simple';try{v=localStorage.getItem('rf_bom_view')||'simple';}catch(e){}{% if not items %}v='full';{% endif %}setView(v);
+function tab(i){document.querySelectorAll('.tabs2 button').forEach((b,j)=>b.classList.toggle('on',i===j));document.querySelectorAll('.pane').forEach((p,j)=>p.classList.toggle('on',i===j));}</script>{% endblock %}
