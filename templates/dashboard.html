@@ -34,6 +34,7 @@
   <div class="chips">
     <span class="chip">💬 {{stats.messages}} messages</span><span class="chip">📞 {{stats.calls}} calls</span><span class="chip">🔧 {{stats.hardware}} parts</span>
     {% if fw %}<span class="chip">💾 firmware {{fw.version}} · {{fw.status}}</span>{% endif %}
+    {% for dv in devices %}<a class="chip" href="{{url_for('iot.data_page')}}" style="color:#fff">{{ '🟢' if dv.online else '⚪' }} {{dv.name}}{% for k,v in dv.last.items() if loop.index<=3 %} · {{k}} {{ ('%g'|format(v)) if v is number else v }}{% endfor %}</a>{% endfor %}
     {% if low %}<span class="chip alert">⚠ {{low}} part{{'s' if low>1}} low on stock</span>{% endif %}
     {% if agreement %}<span class="chip">🤝 agreement v{{agreement.version}} · {{ agreement.accepted_by.split(',')|select|list|length }} accepted</span>{% else %}<span class="chip alert">no agreement yet</span>{% endif %}
   </div>

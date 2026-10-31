@@ -12,6 +12,13 @@ For a software owner working with an IoT / hardware team on a weather station an
 - **Reports** — progress by status and member, completed this week, overdue, upcoming, hours logged, milestones; **PDF report** download
 - Old "Research" items are migrated into tasks automatically (type = research) with their logs and files
 
+### Live IoT data (ESP32 & more)
+- **Devices** page (`/data`): add a device → get an API key; live values, auto-refreshing charts (1 h / 6 h / 24 h / 7 d), threshold alerts (→ in-app + push), send commands, CSV export.
+- **Data in**: `POST /api/v1/data` with header `X-Device-Key` and a JSON of numeric fields — or **MQTT** on `rainflow/<key>/data` (Mosquitto on the VPS; set `MQTT_HOST/PORT/USER/PASS`, `uv pip install paho-mqtt`).
+- **Commands out**: `POST /api/v1/command` → MQTT `rainflow/<key>/cmd` instantly, or returned in the next HTTP response / `GET /api/v1/commands`.
+- **Data out**: `/api/v1/devices`, `/api/v1/latest`, `/api/v1/readings?device=&field=&from=&to=&format=csv` (login, device key, or `API_READ_TOKEN`).
+- **API & ESP32 docs** page (`/api/docs`) with copy-paste sketches (HTTP deep-sleep node, MQTT two-way node), curl, Python, and the broker setup commands.
+
 ### Mobile app (PWA)
 - Installable: Chrome on Android shows an **Install** banner; on iPhone use Share → *Add to Home Screen*. Opens full-screen with its own icon, bottom tab bar (Home · Chat · Board · Calendar · Alerts), offline page.
 - Chat loads the latest 50 messages and fetches older ones as you scroll up; search covers the full history on the server. Activity is paginated by day.

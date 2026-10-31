@@ -145,6 +145,8 @@ details summary{cursor:pointer;list-style:none}details summary::-webkit-details-
  'my':'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
  'reports':'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
  'bell':'<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+ 'data':'<path d="M3 17l5-6 4 4 4-7 5 5"/><path d="M3 21h18"/>',
+ 'api':'<path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/>',
  'users':'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5 5 0 0 1 6 5"/>',
  'password':'<circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3M21 12v2"/>',
  'logout':'<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"/><path d="M14 8l4 4-4 4M18 12H9"/>'
@@ -161,6 +163,7 @@ details summary{cursor:pointer;list-style:none}details summary::-webkit-details-
     ('Plan', [('pm.board','Board','board'),('pm.my_tasks','My tasks','my'),('pm.timeline','Timeline','timeline'),('pm.calendar_view','Calendar','calendar'),('pm.reports','Reports','reports')]),
     ('Communicate', [('chat','Chat','chat'),('calls','Calls','calls'),('docs','Documents','docs')]),
     ('Build', [('hardware','Hardware','hardware'),('tests','Hardware tests','tests'),('firmware','Firmware','firmware')]),
+    ('Devices', [('iot.data_page','Live data','data'),('iot.api_docs','API & ESP32 docs','api')]),
     ('Deliver', [('agreement','Agreement','agreement'),('milestones','Milestones & payments','milestones')])
   ] %}
   {% for gname, items in groups %}{% if gname %}<div class="grp">{{gname}}</div>{% endif %}

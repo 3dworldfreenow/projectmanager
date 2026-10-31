@@ -1,0 +1,158 @@
+{% extends "base.html" %}{% block title %}API docs · Rainflow{% endblock %}
+{% block pagetitle %}API docs{% endblock %}
+{% block head %}<style>
+pre.code{background:#1f1f1f;color:#e8eaed;padding:14px 16px;border-radius:12px;font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace;overflow-x:auto;white-space:pre;margin:8px 0 14px;position:relative}
+.cp{position:absolute;right:8px;top:8px;background:#444746;color:#fff;border:0;border-radius:6px;padding:3px 9px;font-size:11px;min-height:0}
+code{background:var(--surface2);padding:1px 6px;border-radius:5px;font-size:12.5px}
+.ep{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin:14px 0 4px}.m{font-family:ui-monospace,monospace;font-weight:700;font-size:12px;padding:2px 8px;border-radius:6px;background:var(--teal-soft);color:var(--teal)}.m.post{background:var(--blue-tint);color:var(--blue)}
+.toc a{display:inline-block;margin:0 10px 6px 0}
+table.p td{padding:5px 10px;font-size:13px}
+</style>{% endblock %}
+{% block body %}
+{% set key = devices[0].key if devices else 'rf_YOUR_DEVICE_KEY' %}
+<div class="ph"><div><h1>API & device docs</h1><div class="sub">send sensor data in, read it out, send commands back — ESP32 first</div></div><div class="actions"><a class="btn sec" href="{{url_for('iot.data_page')}}">Live data</a></div></div>
+<div class="card toc"><a href="#esp32">ESP32 (HTTP)</a><a href="#mqtt">ESP32 (MQTT)</a><a href="#cmd">Receiving commands</a><a href="#http">HTTP API reference</a><a href="#read">Reading data out</a><a href="#py">Python</a><a href="#broker">Set up the MQTT broker</a>
+<p class="muted" style="margin:8px 0 0">Your device key{% if devices %} for <b>{{devices[0].name}}</b>{% endif %}: <code>{{key}}</code>{% if not devices %} — <a href="{{url_for('iot.data_page')}}">add a device</a> first to get a real key{% endif %}. Base URL: <code>{{base_url}}</code>. Send any JSON fields you like (<code>temp</code>, <code>hum</code>, <code>pressure</code>, <code>rain_mm</code>, <code>wind_ms</code>, <code>battery_v</code> …) — every numeric field becomes a live chart.</p></div>
+
+<div class="card" id="esp32"><h3>ESP32 — send readings over HTTP (simplest, works through any network)</h3>
+<p class="muted">Arduino IDE / PlatformIO. Needs <code>ArduinoJson</code> (Library Manager). Posts every 5 minutes, deep-sleeps in between.</p>
+<pre class="code"><button class="cp" onclick="cp(this)">Copy</button>#include &lt;WiFi.h&gt;
+#include &lt;HTTPClient.h&gt;
+#include &lt;WiFiClientSecure.h&gt;
+#include &lt;ArduinoJson.h&gt;
+
+const char* WIFI_SSID = "your-wifi";
+const char* WIFI_PASS = "your-password";
+const char* API_URL   = "{{base_url}}/api/v1/data";
+const char* DEVICE_KEY = "{{key}}";
+const int   SLEEP_MIN  = 5;
+
+float readTemp()     { return 24.6; }   // replace with BME280 etc.
+float readHumidity() { return 61.2; }
+float readPressure() { return 1008.3; }
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  for (int i = 0; i &lt; 40 &amp;&amp; WiFi.status() != WL_CONNECTED; i++) delay(500);
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFiClientSecure client; client.setInsecure();   // or client.setCACert(rootCA) for strict TLS
+    HTTPClient http; http.begin(client, API_URL);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("X-Device-Key", DEVICE_KEY);
+
+    StaticJsonDocument&lt;256&gt; doc;
+    doc["temp"] = readTemp(); doc["hum"] = readHumidity(); doc["pressure"] = readPressure();
+    doc["battery_v"] = analogReadMilliVolts(34) * 2 / 1000.0;
+    String body; serializeJson(doc, body);
+
+    int code = http.POST(body);
+    Serial.printf("POST -&gt; %d %s\n", code, http.getString().c_str());
+    // the response contains any queued commands: {"ok":true,"commands":[{"cmd":"relay","value":1}]}
+    http.end();
+  }
+  esp_sleep_enable_timer_wakeup((uint64_t)SLEEP_MIN * 60ULL * 1000000ULL);
+  esp_deep_sleep_start();
+}
+void loop() {}</pre></div>
+
+<div class="card" id="mqtt"><h3>ESP32 — MQTT (live, two-way, best for mains-powered nodes)</h3>
+<p class="muted">Needs <code>PubSubClient</code> + <code>ArduinoJson</code>. Publishes to <code>rainflow/&lt;key&gt;/data</code>, listens on <code>rainflow/&lt;key&gt;/cmd</code>. Broker: <code>{{mqtt_host}}:{{mqtt_port}}</code> {% if not mqtt.host %}<span class="tag warn">broker not configured yet — see "Set up the MQTT broker"</span>{% elif mqtt.connected %}<span class="tag ok">server connected</span>{% else %}<span class="tag bad">server not connected{% if mqtt.error %} · {{mqtt.error}}{% endif %}</span>{% endif %}</p>
+<pre class="code"><button class="cp" onclick="cp(this)">Copy</button>#include &lt;WiFi.h&gt;
+#include &lt;PubSubClient.h&gt;
+#include &lt;ArduinoJson.h&gt;
+
+const char* WIFI_SSID = "your-wifi";  const char* WIFI_PASS = "your-password";
+const char* MQTT_HOST = "{{mqtt_host}}"; const int MQTT_PORT = {{mqtt_port}};
+const char* MQTT_USER = "rainflow";   const char* MQTT_PASS = "mqtt-password";   // as set on the broker
+const char* DEVICE_KEY = "{{key}}";
+String topicData = String("rainflow/") + DEVICE_KEY + "/data";
+String topicCmd  = String("rainflow/") + DEVICE_KEY + "/cmd";
+
+WiFiClient net; PubSubClient mqtt(net);
+unsigned long lastSend = 0;
+
+void onCommand(char* topic, byte* payload, unsigned int len) {
+  StaticJsonDocument&lt;256&gt; doc; deserializeJson(doc, payload, len);
+  const char* cmd = doc["cmd"] | "";
+  if (strcmp(cmd, "relay") == 0) digitalWrite(26, doc["value"] | 0);   // example: {"cmd":"relay","value":1}
+  if (strcmp(cmd, "interval") == 0) { /* change send interval */ }
+}
+void connectMqtt() {
+  while (!mqtt.connected()) {
+    if (mqtt.connect(DEVICE_KEY, MQTT_USER, MQTT_PASS)) mqtt.subscribe(topicCmd.c_str());
+    else delay(2000);
+  }
+}
+void setup() {
+  Serial.begin(115200); pinMode(26, OUTPUT);
+  WiFi.begin(WIFI_SSID, WIFI_PASS); while (WiFi.status() != WL_CONNECTED) delay(300);
+  mqtt.setServer(MQTT_HOST, MQTT_PORT); mqtt.setCallback(onCommand);
+}
+void loop() {
+  if (!mqtt.connected()) connectMqtt();
+  mqtt.loop();
+  if (millis() - lastSend &gt; 10000) {               // every 10 s
+    lastSend = millis();
+    StaticJsonDocument&lt;256&gt; doc;
+    doc["temp"] = 24.6; doc["hum"] = 61.2; doc["wind_ms"] = 3.4; doc["rain_mm"] = 0.2;
+    char buf[256]; serializeJson(doc, buf);
+    mqtt.publish(topicData.c_str(), buf);
+  }
+}</pre></div>
+
+<div class="card" id="cmd"><h3>Receiving commands on the device</h3>
+<p>From the Live data page (or <code>POST /api/v1/command</code>) you send e.g. <code>{"cmd":"relay","value":1}</code>. It reaches the device two ways:</p>
+<ul><li><b>MQTT</b> — instantly on <code>rainflow/&lt;key&gt;/cmd</code> (see <code>onCommand</code> above).</li>
+<li><b>HTTP</b> — included in the response of every <code>POST /api/v1/data</code> (<code>commands:[…]</code>), or poll <code>GET /api/v1/commands</code>. Good for battery nodes that wake every few minutes.</li></ul></div>
+
+<div class="card" id="http"><h3>HTTP API reference</h3>
+<div class="ep"><span class="m post">POST</span><code>/api/v1/data</code><span class="muted">device → server</span></div>
+<table class="p"><tr><td>Auth</td><td>header <code>X-Device-Key: {{key}}</code> (or <code>?key=</code>)</td></tr><tr><td>Body</td><td>JSON object of fields, e.g. <code>{"temp":22.5,"hum":61}</code>. Optional <code>"ts":"2026-10-31 14:00:00"</code> for buffered readings. Form-encoded also accepted.</td></tr><tr><td>Returns</td><td><code>{"ok":true,"stored":["temp","hum"],"commands":[…]}</code></td></tr></table>
+<pre class="code"><button class="cp" onclick="cp(this)">Copy</button>curl -X POST {{base_url}}/api/v1/data \
+  -H "X-Device-Key: {{key}}" -H "Content-Type: application/json" \
+  -d '{"temp":22.5,"hum":61,"pressure":1008.3}'</pre>
+<div class="ep"><span class="m">GET</span><code>/api/v1/commands</code><span class="muted">device polls for queued commands (marks them delivered)</span></div>
+<div class="ep"><span class="m post">POST</span><code>/api/v1/command</code><span class="muted">server → device · logged-in users · body <code>{"device":1,"cmd":"relay","value":1}</code></span></div>
+</div>
+
+<div class="card" id="read"><h3>Reading data out (dashboards, Excel, other apps)</h3>
+<p class="muted">Auth for read endpoints: be logged in (browser), or send a device key, or <code>Authorization: Bearer &lt;API_READ_TOKEN&gt;</code> / <code>?token=</code> {% if read_token %}<span class="tag ok">API_READ_TOKEN is set</span>{% else %}<span class="tag warn">set API_READ_TOKEN in the service file to allow external apps</span>{% endif %}</p>
+<div class="ep"><span class="m">GET</span><code>/api/v1/devices</code><span class="muted">all devices with last values</span></div>
+<div class="ep"><span class="m">GET</span><code>/api/v1/latest?device=1</code><span class="muted">latest values of one device</span></div>
+<div class="ep"><span class="m">GET</span><code>/api/v1/readings?device=1&amp;field=temp&amp;from=2026-10-30&amp;to=2026-10-31&amp;limit=1000</code><span class="muted">history, newest first · add <code>&amp;format=csv</code> for Excel</span></div>
+<pre class="code"><button class="cp" onclick="cp(this)">Copy</button>curl "{{base_url}}/api/v1/readings?device=1&amp;field=temp&amp;limit=100" -H "Authorization: Bearer YOUR_API_READ_TOKEN"</pre></div>
+
+<div class="card" id="py"><h3>Python (Raspberry Pi gateway, scripts)</h3>
+<pre class="code"><button class="cp" onclick="cp(this)">Copy</button>import requests, time
+URL = "{{base_url}}/api/v1/data"; KEY = "{{key}}"
+while True:
+    r = requests.post(URL, json={"temp": 22.5, "hum": 61}, headers={"X-Device-Key": KEY}, timeout=10)
+    for c in r.json().get("commands", []): print("command:", c)
+    time.sleep(60)
+
+# MQTT instead (pip install paho-mqtt):
+# import paho.mqtt.publish as p; p.single(f"rainflow/{KEY}/data", '{"temp":22.5}', hostname="{{mqtt_host}}", auth={"username":"rainflow","password":"mqtt-password"})</pre></div>
+
+<div class="card" id="broker"><h3>Set up the MQTT broker (once, on the server)</h3>
+<pre class="code"><button class="cp" onclick="cp(this)">Copy</button># Mosquitto broker on the VPS
+yum install -y mosquitto || apt install -y mosquitto
+cat &gt; /etc/mosquitto/conf.d/rainflow.conf &lt;&lt;'EOF'
+listener 1883
+allow_anonymous false
+password_file /etc/mosquitto/passwd
+EOF
+mosquitto_passwd -c -b /etc/mosquitto/passwd rainflow 'mqtt-password'
+systemctl enable --now mosquitto
+firewall-cmd --permanent --add-port=1883/tcp 2&gt;/dev/null &amp;&amp; firewall-cmd --reload   # (and in the Contabo panel firewall)
+
+# tell Rainflow about it
+uv pip install --python /opt/rainflow/projectmanager/.venv paho-mqtt
+sed -i 's|^Environment=.*|&amp; MQTT_HOST=127.0.0.1 MQTT_PORT=1883 MQTT_USER=rainflow MQTT_PASS=mqtt-password|' /etc/systemd/system/rainflow.service
+systemctl daemon-reload &amp;&amp; systemctl restart rainflow
+
+# test from any machine
+mosquitto_pub -h {{mqtt_host}} -u rainflow -P 'mqtt-password' -t rainflow/{{key}}/data -m '{"temp":21.5}'</pre>
+<p class="muted">Devices connect to <code>{{mqtt_host}}:1883</code> with the user/password above. For TLS (port 8883) add <code>certfile/keyfile</code> lines pointing at the Let's Encrypt certificate and set <code>MQTT_TLS=1</code>.</p></div>
+{% endblock %}
+{% block scripts %}<script>function cp(b){navigator.clipboard.writeText(b.parentElement.innerText.replace(/^Copy\n?/,'')).then(()=>{b.textContent='Copied';setTimeout(()=>b.textContent='Copy',1500);});}</script>{% endblock %}

@@ -1,0 +1,85 @@
+{% extends "base.html" %}{% block title %}Live data · Rainflow{% endblock %}
+{% block pagetitle %}Live data{% endblock %}
+{% block head %}<style>
+.dev{display:grid;grid-template-columns:260px 1fr;gap:18px}
+.dev .vals{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.val{background:var(--surface2);border-radius:12px;padding:10px 12px;min-width:96px}.val .k{font-size:11.5px;color:var(--muted)}.val .v{font-size:22px;font-weight:400;font-variant-numeric:tabular-nums;font-family:"Google Sans Text",Roboto,sans-serif}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--line2)}.dot.on{background:#188038;box-shadow:0 0 0 3px #e6f4ea}
+.charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}.ch{background:var(--surface2);border-radius:12px;padding:8px 8px 4px}.ch h4{margin:0 0 2px 6px;font-size:12px;color:var(--muted);font-weight:500}.ch canvas{width:100%;height:140px;display:block}
+.key{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:6px;word-break:break-all}
+.range{display:inline-flex;background:var(--surface2);border-radius:999px;padding:3px}.range button{background:transparent;color:var(--ink2);padding:5px 12px;min-height:0;border:0;font-size:13px}.range button.on{background:var(--surface);color:var(--blue);box-shadow:0 1px 2px rgba(60,64,67,.2)}
+details.more summary{color:var(--blue);cursor:pointer;font-size:13px;margin-top:8px}
+@media(max-width:860px){.dev{grid-template-columns:1fr}}
+</style>{% endblock %}
+{% block body %}
+<div class="ph"><div><h1>Live data</h1><div class="sub">{{devices|length}} device{{'s' if devices|length!=1}} · refreshes every 5 s · <span id="mq">{% if mqtt.host %}MQTT {{ 'connected' if mqtt.connected else 'not connected' }}{% if mqtt.error %} · ⚠ {{mqtt.error}}{% endif %}{% else %}MQTT not configured (HTTP works){% endif %}</span></div></div>
+<div class="actions"><span class="range" id="range"><button class="on" data-h="1">1 h</button><button data-h="6">6 h</button><button data-h="24">24 h</button><button data-h="168">7 d</button></span><a class="btn sec" href="{{url_for('iot.api_docs')}}">API & ESP32 docs</a></div></div>
+
+{% for d in devices %}
+<div class="card dev" id="dev-{{d.id}}">
+  <div>
+    <div class="row" style="gap:6px"><span class="dot {{ 'on' if d.online }}"></span><h3 style="flex:1">{{d.name}}</h3>{% if not d.enabled %}<span class="tag bad">disabled</span>{% endif %}</div>
+    <div class="muted">{{d.location or '—'}} · last seen <span class="seen">{{d.last_seen or 'never'}}</span></div>
+    <div class="vals" data-dev="{{d.id}}">{% for k,v in d.last.items() %}<div class="val" data-f="{{k}}"><div class="k">{{k}}</div><div class="v">{{ ('%g'|format(v)) if v is number else v }}</div></div>{% else %}<div class="muted">No data yet — send a reading with the key below.</div>{% endfor %}</div>
+    <details class="more"><summary>Device key, commands & alerts</summary>
+      <div style="margin-top:8px"><div class="muted">Device key</div><span class="key">{{d.key}}</span></div>
+      <form class="row" style="margin-top:10px;gap:6px" onsubmit="return sendCmd(event,{{d.id}})"><input name="cmd" placeholder='command e.g. relay' style="flex:1;min-width:90px"><input name="value" placeholder="value" style="width:80px"><button class="sm">Send</button></form>
+      <div class="muted" style="margin-top:4px" id="cmdres-{{d.id}}"></div>
+      <div style="margin-top:12px"><div class="muted">Alerts</div>
+        {% for a in alerts if a.device_id==d.id %}<div class="row" style="font-size:13px;padding:4px 0"><span>{{a.field}} {{a.op}} {{'%g'|format(a.threshold)}}{% if a.message %} · {{a.message}}{% endif %}</span><form method="post" action="{{url_for('iot.device_action',did=d.id,action='alertdel')}}"><input type="hidden" name="alert_id" value="{{a.id}}"><button class="sec sm" style="padding:2px 8px;min-height:0">✕</button></form></div>{% endfor %}
+        <form method="post" action="{{url_for('iot.device_action',did=d.id,action='alert')}}" class="row" style="gap:6px;margin-top:4px"><input name="field" placeholder="field" list="f{{d.id}}" style="width:90px" required><datalist id="f{{d.id}}">{% for f in d.fields %}<option value="{{f}}">{% endfor %}</datalist><select name="op" style="width:auto"><option>&gt;</option><option>&lt;</option><option>=</option></select><input name="threshold" type="number" step="any" placeholder="value" style="width:80px" required><input name="message" placeholder="message (optional)" style="flex:1;min-width:100px"><button class="sec sm">Add alert</button></form>
+      </div>
+      <div class="row" style="margin-top:12px;gap:6px">
+        <form method="post" action="{{url_for('iot.device_action',did=d.id,action='toggle')}}"><button class="sec sm">{{ 'Disable' if d.enabled else 'Enable' }}</button></form>
+        <form method="post" action="{{url_for('iot.device_action',did=d.id,action='newkey')}}" onsubmit="return confirm('Generate a new key? The device must be updated.')"><button class="sec sm">New key</button></form>
+        <a class="btn sec sm" href="/api/v1/readings?device={{d.id}}&format=csv&limit=20000">Export CSV</a>
+        <form method="post" action="{{url_for('iot.device_action',did=d.id,action='clear')}}" onsubmit="return confirm('Delete all readings of this device?')"><button class="sec sm">Clear data</button></form>
+        <form method="post" action="{{url_for('iot.device_action',did=d.id,action='delete')}}" onsubmit="return confirm('Delete device and its data?')"><button class="danger sm">Delete</button></form>
+      </div></details>
+  </div>
+  <div class="charts" data-dev="{{d.id}}">{% for f in d.fields %}<div class="ch"><h4>{{f}}</h4><canvas id="c-{{d.id}}-{{f}}"></canvas></div>{% else %}<div class="empty" style="grid-column:1/-1"><b>Charts appear once data arrives</b>Each numeric field becomes a chart.</div>{% endfor %}</div>
+</div>
+{% endfor %}
+
+<details class="card" {% if not devices %}open{% endif %}><summary style="font-weight:500">+ Add a device</summary>
+<form method="post" action="{{url_for('iot.device_new')}}" style="margin-top:8px"><div class="grid g3"><div><label>Name</label><input name="name" required placeholder="Weather station roof"></div><div><label>Location</label><input name="location" placeholder="Roof, north side"></div><div><label>Notes</label><input name="notes" placeholder="ESP32 + BME280 + rain gauge"></div></div><br><button>Add device → get key</button></form></details>
+{% endblock %}
+{% block scripts %}
+<script>
+let hours=1;const charts={};
+const colors=['#0b57d0','#188038','#e37400','#b3261e','#7b1fa2','#00838f','#5f6368'];
+// dependency-free line chart (works offline / on LAN)
+function mk(id,label,pts,i){const c=document.getElementById(id);if(!c)return;const st=charts[id]||(charts[id]={});st.pts=pts;st.color=colors[i%colors.length];
+ if(!st.bound){st.bound=1;c.addEventListener('mousemove',e=>{const r=c.getBoundingClientRect();st.hx=(e.clientX-r.left)*(c.width/r.width);draw(id);});c.addEventListener('mouseleave',()=>{st.hx=null;draw(id);});c.addEventListener('touchmove',e=>{const r=c.getBoundingClientRect();st.hx=(e.touches[0].clientX-r.left)*(c.width/r.width);draw(id);},{passive:true});}
+ draw(id);}
+function draw(id){const c=document.getElementById(id),st=charts[id];if(!c||!st)return;const dpr=devicePixelRatio||1;const W=c.clientWidth||300,H=140;if(c.width!==W*dpr){c.width=W*dpr;c.height=H*dpr;}
+ const g=c.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);const pts=st.pts;if(!pts||!pts.length)return;
+ const L=38,R=8,T=10,B=22,w=W-L-R,h=H-T-B;let mn=Math.min(...pts.map(p=>p[1])),mx=Math.max(...pts.map(p=>p[1]));if(mn===mx){mn-=1;mx+=1;}const pad=(mx-mn)*.08;mn-=pad;mx+=pad;
+ const X=i=>L+(pts.length>1?i/(pts.length-1):.5)*w,Y=v=>T+h-(v-mn)/(mx-mn)*h;
+ g.strokeStyle='#e3e8ef';g.lineWidth=1;g.fillStyle='#5f6368';g.font='10px Roboto,sans-serif';g.textAlign='right';
+ for(let k=0;k<=3;k++){const v=mn+(mx-mn)*k/3,y=Y(v);g.beginPath();g.moveTo(L,y);g.lineTo(W-R,y);g.stroke();g.fillText((+v.toFixed(Math.abs(mx-mn)<5?2:1)).toString(),L-4,y+3);}
+ g.textAlign='center';const nl=Math.min(5,pts.length);for(let k=0;k<nl;k++){const i=Math.round(k*(pts.length-1)/Math.max(nl-1,1));const t=pts[i][0];g.fillText(hours>48?t.slice(5,10)+' '+t.slice(11,16):t.slice(11,16),X(i),H-6);}
+ g.beginPath();pts.forEach((p,i)=>i?g.lineTo(X(i),Y(p[1])):g.moveTo(X(i),Y(p[1])));g.strokeStyle=st.color;g.lineWidth=1.6;g.lineJoin='round';g.stroke();
+ g.lineTo(X(pts.length-1),T+h);g.lineTo(X(0),T+h);g.closePath();g.fillStyle=st.color+'22';g.fill();
+ if(st.hx!=null){const i=Math.max(0,Math.min(pts.length-1,Math.round((st.hx/dpr-L)/w*(pts.length-1))));const x=X(i),y=Y(pts[i][1]);
+  g.strokeStyle='#c4c7c5';g.setLineDash([3,3]);g.beginPath();g.moveTo(x,T);g.lineTo(x,T+h);g.stroke();g.setLineDash([]);
+  g.fillStyle=st.color;g.beginPath();g.arc(x,y,3.5,0,7);g.fill();
+  const txt=pts[i][0].slice(5,16)+'  '+(+pts[i][1].toFixed(2));g.font='11px Roboto,sans-serif';const tw=g.measureText(txt).width+12;let bx=Math.min(Math.max(x-tw/2,L),W-R-tw);
+  g.fillStyle='#1f1f1f';g.beginPath();g.roundRect(bx,T,tw,18,6);g.fill();g.fillStyle='#fff';g.textAlign='center';g.fillText(txt,bx+tw/2,T+13);}}
+window.addEventListener('resize',()=>Object.keys(charts).forEach(draw));
+async function refresh(){for(const box of document.querySelectorAll('.charts[data-dev]')){const dev=box.dataset.dev;
+ try{const s=await (await fetch(`/data/series?device=${dev}&hours=${hours}`)).json();let i=0;
+  for(const f in s){let c=document.getElementById(`c-${dev}-${f}`);if(!c){const d=document.createElement('div');d.className='ch';d.innerHTML=`<h4>${f}</h4><canvas id="c-${dev}-${f}"></canvas>`;const e=box.querySelector('.empty');if(e)e.remove();box.appendChild(d);}
+   mk(`c-${dev}-${f}`,f,s[f],i++);}}catch(e){}}
+ try{const j=await (await fetch('/api/v1/latest')).json();for(const d of j.devices){const box=document.querySelector(`.vals[data-dev="${d.id}"]`);if(!box||!d.last_data)continue;
+  const card=document.getElementById('dev-'+d.id);card.querySelector('.seen').textContent=d.last_seen||'never';
+  const on=d.last_seen&&(Date.now()-new Date(d.last_seen.replace(' ','T')).getTime())<600000;card.querySelector('.dot').classList.toggle('on',!!on);
+  for(const k in d.last_data){let el=box.querySelector(`.val[data-f="${k}"]`);if(!el){box.querySelector('.muted')?.remove();el=document.createElement('div');el.className='val';el.dataset.f=k;el.innerHTML=`<div class="k">${k}</div><div class="v"></div>`;box.appendChild(el);}
+   const v=d.last_data[k];el.querySelector('.v').textContent=typeof v==='number'?(+v.toFixed(2)).toString():v;}}}catch(e){}
+ try{const m=await (await fetch('/api/v1/mqtt/status')).json();if(m.host)document.getElementById('mq').textContent='MQTT '+(m.connected?'connected':'not connected')+(m.received?' · '+m.received+' msgs':'')+(m.error?' · ⚠ '+m.error:'');}catch(e){}}
+document.querySelectorAll('#range button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#range button').forEach(x=>x.classList.remove('on'));b.classList.add('on');hours=+b.dataset.h;refresh();});
+async function sendCmd(e,dev){e.preventDefault();const f=e.target;const body={device:dev,cmd:f.cmd.value};if(f.value.value)body.value=isNaN(f.value.value)?f.value.value:+f.value.value;
+ const r=await (await fetch('/api/v1/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();document.getElementById('cmdres-'+dev).textContent='Sent ('+r.via+')';return false;}
+refresh();setInterval(refresh,5000);
+</script>
+{% endblock %}

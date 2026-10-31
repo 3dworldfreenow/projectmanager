@@ -138,8 +138,9 @@ def unread_count():
 def init_db():
     _init_db_core()
     from pm import init_pm
+    from iot import init_iot
     con = sqlite3.connect(DB); con.row_factory = sqlite3.Row
-    init_pm(con); con.close()
+    init_pm(con); init_iot(con); con.close()
 
 def _init_db_core():
     con = sqlite3.connect(DB)
@@ -403,8 +404,15 @@ def dashboard():
     fw = d.execute("SELECT version, status FROM firmware WHERE project_id=? ORDER BY id DESC LIMIT 1", (p,)).fetchone()
     members = all_users()
     activity = d.execute("SELECT * FROM activity WHERE project_id=? ORDER BY id DESC LIMIT 6", (p,)).fetchall()
+    try:
+        devs = d.execute("SELECT name,last_seen,last_data FROM devices WHERE project_id=? AND enabled=1", (p,)).fetchall()
+        import json as _j
+        devices = [dict(name=x["name"], online=bool(x["last_seen"]) and (datetime.datetime.now() - datetime.datetime.strptime(x["last_seen"], "%Y-%m-%d %H:%M:%S")).total_seconds() < 600,
+                        last=_j.loads(x["last_data"]) if x["last_data"] else {}) for x in devs]
+    except Exception:
+        devices = []
     return render_template("dashboard.html", stats=stats, recent_msgs=recent_msgs, recent_calls=recent_calls,
-                           tasks=tasks, agreement=agreement, pulse=pulse, low=low, fw=fw, members=members, activity=activity)
+                           tasks=tasks, agreement=agreement, pulse=pulse, low=low, fw=fw, members=members, activity=activity, devices=devices)
 
 IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 
@@ -1347,6 +1355,8 @@ def add_project():
 
 from pm import pm as _pm, due_reminders
 app.register_blueprint(_pm)
+from iot import iot as _iot, mqtt_start
+app.register_blueprint(_iot)
 
 # old research URLs → tasks board
 @app.route("/research")
@@ -1356,6 +1366,7 @@ def research():
 
 if __name__ == "__main__":
     init_db()
+    mqtt_start()
     # host 0.0.0.0 so your IoT expert can reach it on the LAN / via tunnel.
     # Note: browsers only allow camera/mic on https:// or localhost — for remote
     # use put it behind an HTTPS tunnel (e.g. `ngrok http 5000`, Cloudflare Tunnel).
