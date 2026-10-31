@@ -857,7 +857,42 @@ def agreement():
             log_activity("wrote agreement", f"v{v}", "/agreement")
         d.commit(); return redirect(url_for("agreement"))
     versions = d.execute("SELECT * FROM agreements ORDER BY version DESC").fetchall()
-    return render_template("agreement.html", versions=versions, current=versions[0] if versions else None)
+    current = versions[0] if versions else None
+    # parties = active members (guests excluded); who signed which version, when
+    parties = d.execute("SELECT username, role FROM users WHERE active=1 AND role!='Guest' ORDER BY rowid").fetchall()
+    signed = {}
+    if current:
+        signed = {r["username"]: r["ts"] for r in d.execute("SELECT username, ts FROM acceptances WHERE agreement_id=?", (current["id"],))}
+        for u in filter(None, current["accepted_by"].split(",")):   # older rows without timestamp
+            signed.setdefault(u, current["ts"])
+    hist = {v["id"]: {r["username"]: r["ts"] for r in d.execute("SELECT username, ts FROM acceptances WHERE agreement_id=?", (v["id"],))} for v in versions}
+    return render_template("agreement.html", versions=versions, current=current, parties=parties, signed=signed, hist=hist,
+                           clauses=parse_clauses(current["body"]) if current else [])
+
+def parse_clauses(body):
+    """Turn free text into sections/clauses: '## Title' starts a section; numbered/bulleted lines or
+    blank-line paragraphs are clauses. Returns [{title, items:[text,...]}]."""
+    import re as _re
+    sections = []; cur = {"title": "", "items": []}; buf = []
+    def flush():
+        if buf:
+            cur["items"].append(" ".join(x.strip() for x in buf)); buf.clear()
+    for line in (body or "").splitlines():
+        st = line.strip()
+        if st.startswith("#"):
+            flush()
+            if cur["items"] or cur["title"]: sections.append(cur)
+            cur = {"title": st.lstrip("#").strip(), "items": []}; continue
+        if not st:
+            flush(); continue
+        m = _re.match(r"^(\d+[\.\)]|[-*•]|[a-z][\.\)])\s+(.*)$", st, _re.I)
+        if m:
+            flush(); buf.append(m.group(2))
+        else:
+            buf.append(st)
+    flush()
+    if cur["items"] or cur["title"]: sections.append(cur)
+    return sections
 
 # -------------------------------------------------------------- hardware ----
 HW_FIELDS = ["name", "part_no", "qty", "supplier", "cost", "status", "notes", "datasheet", "min_qty"]

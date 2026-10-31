@@ -1,15 +1,109 @@
-{% extends "base.html" %}{% block title %}Agreement{% endblock %}
+{% extends "base.html" %}{% block title %}Agreement · Rainflow{% endblock %}
 {% block pagetitle %}Agreement{% endblock %}
+{% block head %}<style>
+.ag{display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start}
+.doc{padding:0;overflow:hidden}
+.doc .head{padding:22px 24px 18px;border-bottom:1px solid var(--line);display:flex;gap:14px;align-items:center}
+.seal{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;background:var(--blue-tint);color:var(--blue);flex-shrink:0}
+.seal.done{background:var(--teal-soft);color:var(--teal)}
+.doc .head h2{font-size:18px;font-weight:500;color:var(--ink);margin:0;letter-spacing:0;text-transform:none}
+.doc .head .meta{font-size:13px;color:var(--muted);margin-top:2px}
+.sec{padding:14px 24px 6px}.sec h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;margin:6px 0 4px}
+.cl{display:flex;gap:14px;padding:12px 24px;border-bottom:1px solid var(--line);transition:background .12s}.cl:hover{background:var(--surface2)}
+.cl .n{width:30px;height:30px;border-radius:50%;background:var(--surface3);color:var(--ink2);display:grid;place-items:center;font-size:12.5px;font-weight:500;flex-shrink:0;font-variant-numeric:tabular-nums}
+.cl.done .n{background:var(--teal-soft);color:var(--teal)}
+.cl .t{flex:1;min-width:0;font-size:14.5px;line-height:1.55;padding-top:4px}
+.cl .ticks{display:flex;gap:4px;align-items:center;padding-top:5px;flex-shrink:0}
+.tick{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:11px;color:#fff;border:2px solid #fff;margin-left:-6px;position:relative}
+.tick.off{background:var(--surface3);color:var(--line2)}.tick.on{background:var(--teal)}
+.tick svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.sig{padding:0}.sig .top{padding:16px 18px 12px;border-bottom:1px solid var(--line)}
+.sig h3{font-size:15px;font-weight:500;margin-bottom:6px}
+.party{display:flex;gap:12px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--line)}.party:last-child{border-bottom:0}
+.party .nm{font-weight:500}.party .rl{font-size:12px;color:var(--muted)}.party .st{font-size:12px;margin-top:2px}
+.party .st.ok{color:var(--teal)}.party .st.wait{color:var(--amber)}
+.chk{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;flex-shrink:0}.chk.on{background:var(--teal-soft);color:var(--teal)}.chk.off{background:var(--surface3);color:var(--line2)}
+.chk svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.accept{margin:14px 18px 18px}.accept button{width:100%;justify-content:center;min-height:46px;font-size:15px}
+.accept .note{font-size:12px;color:var(--muted);margin-top:8px;text-align:center}
+.exec{display:inline-flex;align-items:center;gap:6px;background:var(--teal-soft);color:var(--teal);border-radius:999px;padding:4px 12px;font-size:12.5px;font-weight:500}
+.tl{position:relative;padding-left:22px}.tl::before{content:"";position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:var(--line)}
+.tl .v{position:relative;padding:8px 0 8px 10px}.tl .v::before{content:"";position:absolute;left:-19px;top:14px;width:10px;height:10px;border-radius:50%;background:var(--line2);border:2px solid #fff}.tl .v.cur::before{background:var(--blue)}
+.tl .v summary{cursor:pointer;list-style:none;font-size:13.5px}.tl .v summary b{font-weight:500}
+.tpl{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.editor textarea{min-height:260px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.6}
+.hint{font-size:12.5px;color:var(--muted)}
+@media(max-width:860px){.ag{grid-template-columns:1fr}.cl{padding:12px 14px}.doc .head{padding:16px 14px}.sec{padding:10px 14px 4px}}
+</style>{% endblock %}
 {% block body %}
-<div class="ph"><div><h1>Agreement</h1><div class="sub">{% if current %}version {{current.version}} · {{ current.accepted_by.split(",")|select|list|length }} accepted{% else %}not written yet{% endif %}</div></div></div>
+{% set total = parties|length %}{% set nsig = parties|selectattr('username','in',signed)|list|length %}{% set executed = current and total>0 and nsig==total %}
+<div class="ph"><div><h1>Agreement</h1><div class="sub">{% if current %}version {{current.version}} · {{nsig}} of {{total}} signed{% if executed %} · <span class="exec">✓ fully executed</span>{% endif %}{% else %}no agreement yet — write the first version below{% endif %}</div></div>
+<div class="actions">{% if current %}<a class="btn sec" href="{{url_for('agreement_pdf',aid=current.id)}}" target="_blank">Export PDF</a>{% endif %}<a class="btn sec" href="#editor">{{ 'Propose new version' if current else 'Write agreement' }}</a></div></div>
+
 {% if current %}
-<div class="card"><div class="row"><b style="flex:1">Version {{current.version}}</b><span class="muted">by {{current.author}} · {{current.ts}}</span></div>
-<pre style="margin:12px 0">{{current.body}}</pre>
-<a class="btn sec sm" href="{{url_for('agreement_pdf',aid=current.id)}}" target="_blank">📄 Export PDF (with acceptances & timestamps)</a>
-<div class="row">Accepted by: {% for u in current.accepted_by.split(',') if u %}<span class="tag ok">{{u}} ✓</span>{% endfor %}
-{% if user not in current.accepted_by.split(',') %}<form method="post"><button name="accept" value="1">I accept v{{current.version}}</button></form>{% endif %}</div></div>
+<div class="ag">
+  <div class="card doc">
+    <div class="head"><span class="seal {{ 'done' if executed }}"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">{% if executed %}<path d="M20 6L9 17l-5-5"/>{% else %}<path d="M4 7h16M4 12h10M4 17h7"/><path d="M16 15l2 2 4-4"/>{% endif %}</svg></span>
+      <div style="flex:1;min-width:0"><h2>Working agreement · v{{current.version}}</h2><div class="meta">Written by {{current.author}} on {{current.ts}} · {{ clauses|map(attribute='items')|map('length')|sum }} clauses · ticks show who has accepted</div></div></div>
+    {% set ns = namespace(i=0) %}
+    {% for sec in clauses %}{% if sec.title %}<div class="sec"><h3>{{sec.title}}</h3></div>{% endif %}
+      {% for item in sec['items'] %}{% set ns.i = ns.i + 1 %}
+      <div class="cl {{ 'done' if executed }}"><span class="n">{{ns.i}}</span><div class="t">{{item}}</div>
+        <div class="ticks">{% for p in parties %}<span class="tick {{ 'on' if p.username in signed else 'off' }}" title="{{p.username}}{% if p.username in signed %} · accepted {{signed[p.username]}}{% else %} · not yet{% endif %}"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>{% endfor %}</div></div>
+      {% endfor %}{% endfor %}
+    {% if not clauses %}<div class="cl"><div class="t muted">This version has no text.</div></div>{% endif %}
+    <div style="padding:12px 24px;font-size:12.5px;color:var(--muted)">Acceptances are recorded per version with date and time. Changing anything creates a new version that everyone signs again.</div>
+  </div>
+
+  <div class="card sig">
+    <div class="top"><h3>Signatures</h3><div class="bar ok"><i style="width:{{ (100*nsig/total) if total else 0 }}%"></i></div><div class="muted" style="margin-top:6px">{{nsig}} of {{total}} parties have accepted v{{current.version}}</div></div>
+    {% for p in parties %}<div class="party"><span class="avatar av{{ (loop.index0 % 3)+1 }}">{{p.username[0]|upper}}</span>
+      <div style="flex:1;min-width:0"><div class="nm">{{p.username}}{% if p.username==user %} <span class="muted">(you)</span>{% endif %}</div><div class="rl">{{p.role}}</div>
+        <div class="st {{ 'ok' if p.username in signed else 'wait' }}">{% if p.username in signed %}Accepted · {{signed[p.username]}}{% else %}Awaiting acceptance{% endif %}</div></div>
+      <span class="chk {{ 'on' if p.username in signed else 'off' }}"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span></div>{% endfor %}
+    {% if user not in signed and parties|selectattr('username','equalto',user)|list %}
+    <form method="post" class="accept"><button name="accept" value="1" onclick="return confirm('Accept agreement v{{current.version}}? Your name, role and the time will be recorded.')">✓ I accept version {{current.version}}</button><div class="note">Recorded with your name, role and timestamp. Not legal advice — keep a signed PDF if it matters.</div></form>
+    {% elif user in signed %}<div class="accept"><div class="note">You accepted on {{signed[user]}}. {% if not executed %}Waiting for the others.{% else %}Everyone has signed 🎉{% endif %}</div></div>{% endif %}
+  </div>
+</div>
 {% endif %}
-<h2>{{ 'Propose new version' if current else 'Write agreement' }}</h2>
-<form class="card" method="post"><textarea name="body" style="min-height:220px" placeholder="Scope of work, responsibilities (software vs hardware), payment, IP ownership, timelines, confidentiality…">{{ current.body if current }}</textarea><br><br><button>Save as new version</button></form>
-{% if versions|length > 1 %}<h2>Past versions</h2>{% for v in versions[1:] %}<details class="card"><summary>v{{v.version}} · {{v.author}} · {{v.ts}} · accepted: {{v.accepted_by or '—'}} · <a href="{{url_for('agreement_pdf',aid=v.id)}}" target="_blank">PDF</a></summary><pre style="margin-top:10px">{{v.body}}</pre></details>{% endfor %}{% endif %}
+
+<div class="card editor" id="editor">
+  <div class="row" style="margin-bottom:8px"><h3 style="flex:1">{{ 'Propose a new version' if current else 'Write the agreement' }}</h3><span class="hint">One clause per line (numbered or “-”). A line starting with ## becomes a section heading.</span></div>
+  <div class="tpl"><button type="button" class="sec sm" onclick="tpl()">Insert starter template</button>{% if current %}<button type="button" class="sec sm" onclick="document.getElementById('body').value=document.getElementById('cur').value">Start from current version</button>{% endif %}</div>
+  <form method="post"><textarea name="body" id="body" placeholder="## Scope&#10;1. Deepak owns all software, firmware and cloud work.&#10;2. Ravi owns hardware selection, assembly and bench testing.&#10;## Payment&#10;3. Payment per milestone within 7 days of delivery."></textarea>
+    <textarea id="cur" style="display:none">{{ current.body if current }}</textarea>
+    <div class="row" style="margin-top:10px"><button>Save as version {{ (current.version + 1) if current else 1 }}</button><span class="hint">Everyone will be asked to accept the new version.</span></div></form>
+</div>
+
+{% if versions|length > 1 %}
+<div class="card"><h3 style="margin-bottom:10px">Version history</h3>
+<div class="tl">{% for v in versions %}<details class="v {{ 'cur' if loop.first }}"><summary><b>v{{v.version}}</b> · {{v.author}} · {{v.ts}} · {% set h=hist[v.id] %}{% if h %}signed by {{ h.keys()|join(', ') }}{% else %}no signatures{% endif %} · <a href="{{url_for('agreement_pdf',aid=v.id)}}" target="_blank">PDF</a></summary><pre style="margin:8px 0 4px;font-size:13px;color:var(--ink2)">{{v.body}}</pre></details>{% endfor %}</div></div>
+{% endif %}
 {% endblock %}
+{% block scripts %}<script>
+function tpl(){const t=document.getElementById('body');if(t.value.trim()&&!confirm('Replace the editor text with the template?'))return;
+t.value=`## Scope of work
+1. {{user}} is responsible for all software: firmware, cloud/server, app and integrations.
+2. The hardware partner is responsible for hardware selection, schematics, assembly, enclosure and bench testing.
+3. Both parties log work, decisions and test results in Rainflow so the project history stays complete.
+
+## Payment
+4. Work is paid per milestone as listed on the Milestones page, within 7 days of acceptance of each milestone.
+5. Hardware purchases are approved in advance on the Hardware page and reimbursed at cost against receipts.
+
+## Intellectual property
+6. All designs, code, documentation, data and recordings produced for the project belong to the project owner.
+7. Each party may list the project in their portfolio after the first public release, without disclosing confidential details.
+
+## Confidentiality
+8. Project details, credentials, supplier prices and customer information are not shared outside the team.
+
+## Timeline & communication
+9. Target dates are set on the Board and Milestones pages; delays are flagged in chat as soon as they are known.
+10. Weekly check-in call; recordings are kept in Rainflow.
+
+## Changes & ending
+11. Changes to this agreement are made as a new version in Rainflow and take effect when all parties accept it.
+12. Either party may end the engagement with 14 days notice; completed milestones are paid, work in progress is handed over.`;t.focus();}
+</script>{% endblock %}
