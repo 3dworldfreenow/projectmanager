@@ -1,0 +1,117 @@
+{% extends "base.html" %}{% block title %}{{des.title}} · Rainflow{% endblock %}
+{% block pagetitle %}Design{% endblock %}
+{% block head %}<style>
+.lay{display:grid;grid-template-columns:1fr 330px;gap:16px;align-items:start}
+.viewer{position:relative;background:#f0f4f9;border-radius:12px;overflow:hidden;user-select:none;-webkit-user-select:none}
+.viewer img{display:block;width:100%;height:auto;cursor:crosshair}
+.viewer.pan img{cursor:grab}
+.pin{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;background:var(--blue);color:#fff;font-size:12px;font-weight:600;display:grid;place-items:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;transition:transform .1s}
+.pin:hover,.pin.hl{transform:scale(1.25);background:var(--red)}
+.pin.part{background:#188038}
+.legend{list-style:none;margin:0;padding:0}.legend li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer}.legend li:last-child{border:0}
+.legend .n{width:24px;height:24px;border-radius:50%;background:var(--blue);color:#fff;font-size:12px;font-weight:600;display:grid;place-items:center;flex-shrink:0}.legend .n.part{background:#188038}
+.legend .t{flex:1;min-width:0}.legend .t b{font-weight:500}.legend .t .s{font-size:12.5px;color:var(--muted)}
+.legend .x{background:none;border:0;color:var(--muted);padding:0;min-height:0;font-size:14px}
+#pinform{display:none;position:absolute;z-index:5;background:#fff;border-radius:12px;box-shadow:var(--sh2);padding:10px;width:260px}#pinform.on{display:block}
+#pinform input,#pinform select{margin-bottom:6px;padding:7px 10px}
+.vlist .v{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}.vlist .v:last-child{border:0}.vlist .v.cur b{color:var(--blue)}
+.spec{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px}.spec label{margin:4px 0 2px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.toolbar .muted{font-size:12.5px}
+.filebox{padding:40px 20px;text-align:center;background:var(--surface2);border-radius:12px}
+@media(max-width:860px){.lay{grid-template-columns:1fr}}
+</style>{% endblock %}
+{% block body %}
+<div class="ph"><div><a href="{{url_for('hw.designs')}}" class="muted">← Designs</a><h1 style="margin-top:4px">{{des.title}}</h1>
+<div class="sub">{{ TYPE_ICON.get(des.type,'📄') }} {{ TYPE_LABEL.get(des.type,'Other') }} · <span class="tag {{ 'ok' if des.status=='approved' else 'warn' if des.status=='review' else '' }}">{{ dict(HW_STATUSES)[des.status] }}</span> · by {{des.created_by}} · {{des.ts}}{% if cur %} · showing <b>v{{cur.version}}</b>{% endif %}</div></div>
+<div class="actions">{% for st,l in HW_STATUSES if st!=des.status %}<form method="post" action="{{url_for('hw.design_update',did=des.id)}}"><input type="hidden" name="status" value="{{st}}"><button class="btn sec sm">→ {{l}}</button></form>{% endfor %}</div></div>
+
+<div class="lay">
+<div>
+  <div class="card">
+    {% if cur and is_img %}
+    <div class="toolbar"><b>Tap on the image to add a numbered pin</b><span class="muted">· drag a pin to move it · tap a pin to edit</span><div style="flex:1"></div><a class="btn sec sm" href="{{url_for('uploaded',fn=cur.filename)}}" target="_blank">Open full size</a></div>
+    <div class="viewer" id="viewer"><img id="img" src="{{url_for('uploaded',fn=cur.filename)}}" draggable="false">
+      {% for p in pins %}<div class="pin {{ 'part' if p.hardware_id }}" data-id="{{p.id}}" style="left:{{p.x}}%;top:{{p.y}}%" title="{{p.label}}{% if p.part_name %} · {{p.part_name}}{% endif %}">{{loop.index}}</div>{% endfor %}
+      <div id="pinform"><input id="pf_label" placeholder="Label, e.g. U1 ESP32 / mounting hole"><select id="pf_part"><option value="">— link to a part (optional) —</option>{% for p in parts %}<option value="{{p.id}}">{{p.name}}{% if p.refs %} ({{p.refs}}){% endif %}</option>{% endfor %}</select><input id="pf_note" placeholder="Note (optional)"><div class="row" style="gap:6px"><button type="button" class="sm" onclick="savePin()">Save</button><button type="button" class="sec sm" onclick="closePin()">Cancel</button><button type="button" class="sec sm" id="pf_del" onclick="delPin()" style="margin-left:auto;color:var(--red)">Delete</button></div></div>
+    </div>
+    {% elif cur and is_pdf %}
+    <div class="toolbar"><b>PDF</b><span class="muted">· pins work on images — export a PNG of the page to annotate it</span><div style="flex:1"></div><a class="btn sec sm" href="{{url_for('uploaded',fn=cur.filename)}}" target="_blank">Open</a></div>
+    <iframe src="{{url_for('uploaded',fn=cur.filename)}}" style="width:100%;height:70vh;border:0;border-radius:12px;background:#fff"></iframe>
+    {% elif cur %}
+    <div class="filebox"><div style="font-size:40px">📁</div><b>{{cur.orig_name}}</b><div class="muted">design file (Gerber / CAD / 3D). Download to open in your tool; upload a PNG/JPG export as another version to annotate it.</div><br><a class="btn" href="{{url_for('uploaded',fn=cur.filename)}}">Download</a></div>
+    {% else %}<div class="filebox"><b>No file yet</b><div class="muted">Upload the first version on the right — a phone photo of a sketch is fine.</div></div>{% endif %}
+  </div>
+
+  {% if cur and is_img %}
+  <div class="card"><div class="row" style="margin-bottom:6px"><h3>Pins on this version</h3><span class="muted">{{pins|length}}</span></div>
+    <ul class="legend" id="legend">{% for p in pins %}<li data-id="{{p.id}}" onclick="focusPin({{p.id}})"><span class="n {{ 'part' if p.hardware_id }}">{{loop.index}}</span><div class="t"><b>{{p.label or '(no label)'}}</b>{% if p.part_name %} · <a href="{{url_for('hardware_item',hid=p.hardware_id)}}">{{p.part_name}}{% if p.part_refs %} ({{p.part_refs}}){% endif %}</a>{% endif %}{% if p.note %}<div class="s">{{p.note}}</div>{% endif %}</div></li>{% else %}<li class="muted" style="cursor:default">No pins yet — tap the image where a component, connector or hole is.</li>{% endfor %}</ul></div>
+  {% endif %}
+
+  {% if des.notes %}<div class="card"><h3 style="font-size:13px;color:var(--muted);margin-bottom:6px">Notes</h3><pre>{{des.notes}}</pre></div>{% endif %}
+</div>
+
+<div>
+  <div class="card"><h3 style="margin-bottom:8px">Versions</h3>
+    <div class="vlist">{% for v in versions %}<div class="v {{ 'cur' if cur and v.id==cur.id }}"><b>v{{v.version}}</b><a href="{{url_for('hw.design',did=des.id,v=v.id)}}" style="flex:1;color:var(--ink)">{{v.orig_name}}</a><span class="muted">{{v.by}} · {{v.ts[5:16]}}</span></div>{% if v.note %}<div class="muted" style="font-size:12px;margin:-4px 0 4px 34px">{{v.note}}</div>{% endif %}{% endfor %}</div>
+    <form method="post" action="{{url_for('hw.design_version',did=des.id)}}" enctype="multipart/form-data" style="margin-top:10px">
+      <label>Upload new version</label><input type="file" name="file" required accept="image/*,.pdf,.zip,.stl,.step,.stp,.kicad_sch,.kicad_pcb,.sch,.brd,.fzz,.dxf,.svg" capture="environment">
+      <label>What changed</label><input name="note" placeholder="moved J3, added pull-ups…">
+      <label style="display:flex;align-items:center;gap:6px;margin-top:8px"><input type="checkbox" name="copy_pins" value="1" checked style="width:auto"> copy pins from previous version</label>
+      <br><button class="sm">Upload v{{ (versions[0].version + 1) if versions else 1 }}</button></form></div>
+
+  {% if des.type in ('enclosure','pcb') %}
+  <div class="card"><h3 style="margin-bottom:6px">{{ 'Enclosure specs' if des.type=='enclosure' else 'Board specs' }}</h3>
+    <form method="post" action="{{url_for('hw.design_update',did=des.id)}}"><input type="hidden" name="title" value="{{des.title}}"><input type="hidden" name="type" value="{{des.type}}"><input type="hidden" name="notes" value="{{des.notes or ''}}">
+    <div class="spec">
+    {% if des.type=='enclosure' %}
+      <div><label>Length mm</label><input name="length_mm" value="{{specs.length_mm or ''}}"></div><div><label>Width mm</label><input name="width_mm" value="{{specs.width_mm or ''}}"></div>
+      <div><label>Height mm</label><input name="height_mm" value="{{specs.height_mm or ''}}"></div><div><label>Material</label><input name="material" value="{{specs.material or ''}}" placeholder="ABS / PC / 3D-print PETG"></div>
+      <div><label>IP rating</label><input name="ip_rating" value="{{specs.ip_rating or ''}}" placeholder="IP65"></div><div><label>Colour</label><input name="color" value="{{specs.color or ''}}"></div>
+      <div><label>Mounting</label><input name="mounting" value="{{specs.mounting or ''}}" placeholder="pole clamp / wall"></div><div><label>Cable glands</label><input name="glands" value="{{specs.glands or ''}}" placeholder="2× PG7"></div>
+      <div><label>Weight g</label><input name="weight_g" value="{{specs.weight_g or ''}}"></div><div><label>Finish</label><input name="finish" value="{{specs.finish or ''}}"></div>
+    {% else %}
+      <div><label>Board width mm</label><input name="board_w_mm" value="{{specs.board_w_mm or ''}}"></div><div><label>Board height mm</label><input name="board_h_mm" value="{{specs.board_h_mm or ''}}"></div>
+      <div><label>Layers</label><input name="layers" value="{{specs.layers or ''}}" placeholder="2"></div><div><label>Thickness mm</label><input name="thickness_mm" value="{{specs.thickness_mm or ''}}" placeholder="1.6"></div>
+      <div><label>Finish</label><input name="finish" value="{{specs.finish or ''}}" placeholder="HASL / ENIG"></div><div><label>Fab house</label><input name="fab" value="{{specs.fab or ''}}" placeholder="JLCPCB"></div>
+      <div style="grid-column:span 2"><label>Order status</label><select name="order_status">{% for o in ['not ordered','ordered','received','assembled','tested'] %}<option {% if specs.order_status==o %}selected{% endif %}>{{o}}</option>{% endfor %}</select></div>
+    {% endif %}
+    </div><br><button class="sm">Save specs</button></form></div>
+  {% endif %}
+
+  <details class="card"><summary style="font-weight:500">Edit title / type / notes</summary>
+    <form method="post" action="{{url_for('hw.design_update',did=des.id)}}" style="margin-top:6px"><label>Title</label><input name="title" value="{{des.title}}"><label>Type</label><select name="type">{% for k,l,ic in HW_TYPES %}<option value="{{k}}" {% if k==des.type %}selected{% endif %}>{{ic}} {{l}}</option>{% endfor %}</select><label>Notes</label><textarea name="notes">{{des.notes or ''}}</textarea><br><button class="sm">Save</button></form>
+    <form method="post" action="{{url_for('hw.design_delete',did=des.id)}}" onsubmit="return confirm('Delete this design and all its versions?')" style="margin-top:10px"><button class="btn danger sm">Delete design</button></form></details>
+</div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+const VID={{ cur.id if cur else 'null' }};const $=id=>document.getElementById(id);
+const viewer=$('viewer'),img=$('img'),form=$('pinform');let editing=null,pending=null,drag=null,moved=false;
+if(viewer){
+ function pct(e){const r=img.getBoundingClientRect();const p=e.touches?e.touches[0]:e;return {x:Math.max(0,Math.min(100,(p.clientX-r.left)/r.width*100)),y:Math.max(0,Math.min(100,(p.clientY-r.top)/r.height*100))};}
+ function openForm(x,y,data){form.classList.add('on');form.style.left=Math.min(x,100-40)+'%';form.style.top=Math.min(y+2,85)+'%';
+  $('pf_label').value=data?data.label:'';$('pf_part').value=data?(data.part||''):'';$('pf_note').value=data?data.note:'';$('pf_del').style.display=data?'':'none';$('pf_label').focus();}
+ function closePin(){form.classList.remove('on');editing=null;pending=null;}
+ window.closePin=closePin;
+ img.addEventListener('click',e=>{if(moved){moved=false;return;}const p=pct(e);pending=p;editing=null;openForm(p.x,p.y,null);});
+ // existing pins: tap to edit, drag to move
+ viewer.querySelectorAll('.pin').forEach(bind);
+ function bind(el){
+  const start=e=>{drag=el;moved=false;e.preventDefault();};
+  el.addEventListener('mousedown',start);el.addEventListener('touchstart',start,{passive:false});
+  el.addEventListener('click',e=>{e.stopPropagation();if(moved){moved=false;return;}const li=document.querySelector(`#legend li[data-id="${el.dataset.id}"]`);
+   editing=el.dataset.id;openForm(parseFloat(el.style.left),parseFloat(el.style.top),{label:el.title.split(' · ')[0],part:el.dataset.part||'',note:li?(li.querySelector('.s')?.textContent||''):''});});}
+ const move=e=>{if(!drag)return;const p=pct(e);drag.style.left=p.x+'%';drag.style.top=p.y+'%';moved=true;if(e.cancelable)e.preventDefault();};
+ const end=async()=>{if(!drag)return;const el=drag;drag=null;if(moved){await fetch(`/designs/pins/${el.dataset.id}/update`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:el.title.split(' · ')[0],hardware_id:el.dataset.part||null,note:'',x:parseFloat(el.style.left),y:parseFloat(el.style.top)})});}};
+ document.addEventListener('mousemove',move);document.addEventListener('touchmove',move,{passive:false});document.addEventListener('mouseup',end);document.addEventListener('touchend',end);
+ window.savePin=async()=>{const body={label:$('pf_label').value,hardware_id:$('pf_part').value||null,note:$('pf_note').value};
+  if(editing){await fetch(`/designs/pins/${editing}/update`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
+  else if(pending){await fetch(`/designs/pins/${VID}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign(body,pending))});}
+  location.reload();};
+ window.delPin=async()=>{if(editing&&confirm('Remove this pin?')){await fetch(`/designs/pins/${editing}/update`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delete:1})});location.reload();}};
+ window.focusPin=id=>{viewer.querySelectorAll('.pin').forEach(p=>p.classList.toggle('hl',p.dataset.id==id));const el=viewer.querySelector(`.pin[data-id="${id}"]`);if(el)el.scrollIntoView({block:'center',behavior:'smooth'});};
+ // part ids on pins for editing
+ {% for p in pins if p.hardware_id %}(viewer.querySelector('.pin[data-id="{{p.id}}"]')||{}).dataset&&(viewer.querySelector('.pin[data-id="{{p.id}}"]').dataset.part='{{p.hardware_id}}');{% endfor %}
+}
+</script>
+{% endblock %}

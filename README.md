@@ -21,7 +21,9 @@ Repo: https://github.com/3dworldfreenow/projectmanager · Status: in active use,
 | **Chat** | Team chat with reply, pin, @mentions, voice notes, edit history, delete, search, file/image sharing, unread badges |
 | **Calls & meetings** | 1:1 voice/video from chat; **meeting rooms** where anyone can join by link (no account) after the host admits them; mute / camera off / front-rear switch / full screen; **every call recorded to the server** |
 | **Notifications** | In-app bell + toasts; **push to phone with the browser closed** (calls ring, messages, mentions, assignments, due reminders, sensor alerts); optional email / Telegram |
-| **Hardware** | Parts list with cost, supplier, photo, datasheet, low-stock alerts, version history, BOM export to Excel |
+| **Parts (BOM)** | Every component grouped by category (MCU, sensor, passives, connectors, wire, power, mechanical…): value, package, designators (R1, C3), qty per board × boards to build, stock, cost, supplier, photo, datasheet; **quick-add** lines like `R 10k 0603 x3 R1,R4,R7`; CSV/KiCad import; shopping list of what's still to buy; Excel export |
+| **Designs** | Sketches (phone photo), schematics, PCB layouts, enclosure drawings, wiring diagrams, build photos — each with **versions** and **tap-to-add numbered pins** on the image linked to BOM parts (legend below the image); enclosure specs (L×W×H, material, IP rating, glands) and board specs (size, layers, fab, order status); Draft → In review → Approved |
+| **Connections** | Wiring list: from part·pin → to part·pin, wire colour, notes; CSV export for assembly |
 | **Hardware tests** | Pass/fail log linked to parts and firmware versions, attachments |
 | **Firmware** | Versions with release notes and binaries, dev → testing → stable |
 | **Documents · Agreement · Milestones** | File store; versioned agreement each member accepts (PDF export with timestamps); milestones with amounts, due dates, paid status and invoice PDF |

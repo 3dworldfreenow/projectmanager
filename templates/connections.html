@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block title %}Connections · Rainflow{% endblock %}
+{% block pagetitle %}Connections{% endblock %}
+{% block head %}<style>
+.wire{display:inline-block;width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.15);vertical-align:-2px;margin-right:4px}
+.conn td{vertical-align:middle}.pin{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:var(--surface3);padding:1px 7px;border-radius:6px}
+</style>{% endblock %}
+{% block body %}
+<div class="ph"><div><h1>Connections</h1><div class="sub">which pin goes where — the wiring list for assembly</div></div>
+<div class="actions"><a class="btn sec" href="{{url_for('hardware')}}">Parts list</a><a class="btn sec" href="{{url_for('hw.designs')}}">Designs</a><a class="btn sec" href="{{url_for('hw.connections',format='csv')}}">Export CSV</a></div></div>
+<form method="post" class="card"><div class="grid g4" style="grid-template-columns:2fr 1fr 2fr 1fr">
+  <div><label>From part</label><select name="from_part">{% for p in parts %}<option value="{{p.id}}">{{p.name}}{% if p.refs %} ({{p.refs}}){% endif %}</option>{% endfor %}</select></div>
+  <div><label>Pin</label><input name="from_pin" placeholder="GPIO 27 / VCC"></div>
+  <div><label>To part</label><select name="to_part">{% for p in parts %}<option value="{{p.id}}">{{p.name}}{% if p.refs %} ({{p.refs}}){% endif %}</option>{% endfor %}</select></div>
+  <div><label>Pin</label><input name="to_pin" placeholder="SIG / pin 2"></div></div>
+  <div class="grid g3"><div><label>Wire colour / type</label><input name="color" list="colors" placeholder="red 22AWG"><datalist id="colors"><option>red</option><option>black</option><option>yellow</option><option>green</option><option>blue</option><option>white</option><option>orange</option></datalist></div>
+  <div style="grid-column:span 2"><label>Note</label><input name="note" placeholder="pull-up 10k, twisted pair, length 40 cm…"></div></div>
+  <br><button>Add connection</button>{% if not parts %}<span class="muted" style="margin-left:10px">Add parts on the Parts list first.</span>{% endif %}</form>
+<div class="card tight"><table class="conn"><tr><th>#</th><th>From</th><th>Pin</th><th></th><th>To</th><th>Pin</th><th>Wire</th><th>Note</th><th></th></tr>
+{% for r in rows %}<tr><td class="muted">{{loop.index}}</td><td><b>{{r.from_name or '—'}}</b>{% if r.from_refs %} <span class="muted">{{r.from_refs}}</span>{% endif %}</td><td><span class="pin">{{r.from_pin}}</span></td><td>→</td><td><b>{{r.to_name or '—'}}</b>{% if r.to_refs %} <span class="muted">{{r.to_refs}}</span>{% endif %}</td><td><span class="pin">{{r.to_pin}}</span></td>
+<td>{% if r.color %}<span class="wire" style="background:{{ r.color.split()[0] }}"></span>{{r.color}}{% endif %}</td><td class="muted">{{r.note}}</td><td><form method="post"><button name="delete" value="{{r.id}}" class="sec sm" style="padding:2px 8px;min-height:0">✕</button></form></td></tr>
+{% else %}<tr><td colspan="9"><div class="empty"><b>No connections yet</b>Add each wire: from a part's pin to another part's pin.</div></td></tr>{% endfor %}</table></div>
+{% endblock %}

@@ -139,8 +139,9 @@ def init_db():
     _init_db_core()
     from pm import init_pm
     from iot import init_iot
+    from hw import init_hw
     con = sqlite3.connect(DB); con.row_factory = sqlite3.Row
-    init_pm(con); init_iot(con); con.close()
+    init_pm(con); init_iot(con); init_hw(con); con.close()
 
 def _init_db_core():
     con = sqlite3.connect(DB)
@@ -895,32 +896,71 @@ def parse_clauses(body):
     return sections
 
 # -------------------------------------------------------------- hardware ----
-HW_FIELDS = ["name", "part_no", "qty", "supplier", "cost", "status", "notes", "datasheet", "min_qty"]
+HW_FIELDS = ["name", "part_no", "qty", "supplier", "cost", "status", "notes", "datasheet", "min_qty", "category", "value", "package", "refs", "per_board"]
 
 @app.route("/hardware", methods=["GET", "POST"])
 @login_required
 def hardware():
     d = db()
     if request.method == "POST":
-        vals = [request.form.get(k, "") or (0 if k in ("qty","min_qty") else "") for k in HW_FIELDS]
+        f = request.form
+        if "boards" in f:                                   # number of boards to build
+            d.execute("UPDATE projects SET boards=? WHERE id=?", (max(1, int(f["boards"] or 1)), pid())); d.commit()
+            return redirect(url_for("hardware"))
+        if f.get("quick"):                                  # quick-add lines
+            from hw import parse_quick
+            n = 0
+            for line in f["quick"].splitlines():
+                if not line.strip(): continue
+                q = parse_quick(line)
+                d.execute("INSERT INTO hardware(project_id,name,category,value,package,refs,per_board,qty,status,updated_by,ts) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                          (pid(), q["name"], q["category"], q["value"], q["package"], q["refs"], q["per_board"], 0, "planned", session["user"], now())); n += 1
+            log_activity("added parts", f"{n} via quick-add", "/hardware"); d.commit(); flash(f"{n} parts added")
+            return redirect(url_for("hardware"))
+        if request.files.get("csv") and request.files["csv"].filename:   # CSV import (KiCad/any): header row with names
+            import csv, io
+            rdr = csv.DictReader(io.StringIO(request.files["csv"].read().decode("utf-8-sig", errors="ignore")))
+            n = 0
+            for row in rdr:
+                g = lambda *keys: next((row[k] for k in row if k and k.strip().lower().replace(" ", "_") in keys and row[k]), "")
+                name = g("name", "part", "description", "comment", "mpn") or g("value")
+                if not name: continue
+                d.execute("INSERT INTO hardware(project_id,name,category,value,package,refs,per_board,qty,cost,supplier,part_no,status,updated_by,ts) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                          (pid(), name, g("category") or "Other", g("value"), g("footprint", "package"), g("refs", "reference", "designator", "references"),
+                           int(float(g("qty_per_board", "quantity", "qty") or 1)), 0, float(g("cost", "price", "unit_price") or 0), g("supplier", "vendor"), g("part_no", "mpn", "sku"),
+                           "planned", session["user"], now())); n += 1
+            log_activity("imported BOM", f"{n} rows", "/hardware"); d.commit(); flash(f"Imported {n} parts")
+            return redirect(url_for("hardware"))
+        vals = [f.get(k, "") or (0 if k in ("qty", "min_qty") else 1 if k == "per_board" else "") for k in HW_FIELDS]
         photo = None
-        f = request.files.get("photo")
-        if f and f.filename: photo, _ = save_upload(f)
+        up = request.files.get("photo")
+        if up and up.filename: photo, _ = save_upload(up)
         d.execute(f"INSERT INTO hardware(project_id,{','.join(HW_FIELDS)},photo,updated_by,ts) "
                   f"VALUES(?,{','.join('?'*len(HW_FIELDS))},?,?,?)", (pid(), *vals, photo, session["user"], now()))
-        log_activity("added hardware", request.form["name"], "/hardware"); d.commit()
+        log_activity("added hardware", f["name"], "/hardware"); d.commit()
         return redirect(url_for("hardware"))
-    rows = d.execute("SELECT * FROM hardware WHERE project_id=? ORDER BY id", (pid(),)).fetchall()
-    total = sum((r["cost"] or 0) * (r["qty"] or 0) for r in rows)
+    rows = d.execute("SELECT * FROM hardware WHERE project_id=? ORDER BY category, name", (pid(),)).fetchall()
+    boards = (d.execute("SELECT boards FROM projects WHERE id=?", (pid(),)).fetchone() or {"boards": 1})["boards"] or 1
+    groups = {}
+    for r in rows: groups.setdefault(r["category"] or "Other", []).append(r)
+    per_board_cost = sum((r["cost"] or 0) * (r["per_board"] or 1) for r in rows)
+    need = {r["id"]: (r["per_board"] or 1) * boards for r in rows}
+    short = [r for r in rows if (r["qty"] or 0) < need[r["id"]]]
     low = [r for r in rows if (r["min_qty"] or 0) > 0 and (r["qty"] or 0) <= (r["min_qty"] or 0)]
-    return render_template("hardware.html", items=rows, total=total, low=low)
+    designs_using = {}
+    try:
+        for x in d.execute("SELECT DISTINCT p.hardware_id, ds.id, ds.title FROM design_pins p JOIN design_versions v ON v.id=p.version_id JOIN designs ds ON ds.id=v.design_id WHERE p.hardware_id IS NOT NULL"):
+            designs_using.setdefault(x["hardware_id"], []).append((x["id"], x["title"]))
+    except Exception: pass
+    return render_template("hardware.html", items=rows, bom_groups=groups, boards=boards, per_board_cost=per_board_cost,
+                           total=per_board_cost * boards, need=need, short=short, low=low, designs_using=designs_using)
 
 @app.route("/hardware/export")
 @login_required
 def hardware_export():
     """BOM export to Excel (falls back to CSV if openpyxl is missing)."""
     rows = db().execute("SELECT * FROM hardware WHERE project_id=? ORDER BY id", (pid(),)).fetchall()
-    cols = ["name", "part_no", "qty", "cost", "supplier", "status", "datasheet", "notes"]
+    cols = ["category", "refs", "name", "value", "package", "part_no", "per_board", "qty", "cost", "supplier", "status", "datasheet", "notes"]
     pname = db().execute("SELECT name FROM projects WHERE id=?", (pid(),)).fetchone()["name"]
     try:
         from openpyxl import Workbook
@@ -929,9 +969,9 @@ def hardware_export():
         ws.append([c.replace("_", " ").title() for c in cols] + ["Line total"])
         for c in ws[1]: c.font = Font(bold=True)
         for r in rows:
-            ws.append([r[c] for c in cols] + [(r["cost"] or 0) * (r["qty"] or 0)])
-        ws.append([]); ws.append(["TOTAL"] + [""] * (len(cols) - 1) + [f"=SUM(I2:I{len(rows)+1})"])
-        for col, w in zip("ABCDEFGHI", (28, 18, 6, 10, 18, 12, 30, 30, 12)): ws.column_dimensions[col].width = w
+            ws.append([r[c] for c in cols] + [(r["cost"] or 0) * (r["per_board"] or 1)])
+        ws.append([]); ws.append(["TOTAL"] + [""] * (len(cols) - 1) + [f"=SUM(N2:N{len(rows)+1})"])
+        for col, w in zip("ABCDEFGHIJKLMN", (22, 12, 28, 16, 10, 16, 8, 6, 10, 16, 12, 28, 28, 12)): ws.column_dimensions[col].width = w
         path = os.path.join(UPLOADS, f"BOM_{secure_filename(pname)}.xlsx"); wb.save(path)
         return send_from_directory(UPLOADS, os.path.basename(path), as_attachment=True)
     except ImportError:
@@ -1392,6 +1432,8 @@ from pm import pm as _pm, due_reminders
 app.register_blueprint(_pm)
 from iot import iot as _iot, mqtt_start
 app.register_blueprint(_iot)
+from hw import hw as _hw
+app.register_blueprint(_hw)
 
 # old research URLs → tasks board
 @app.route("/research")

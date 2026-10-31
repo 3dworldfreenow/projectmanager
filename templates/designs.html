@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block title %}Designs · Rainflow{% endblock %}
+{% block pagetitle %}Designs{% endblock %}
+{% block head %}<style>
+.dg{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.dc{background:var(--surface);border-radius:16px;overflow:hidden;display:block;color:var(--ink);transition:box-shadow .12s}.dc:hover{box-shadow:var(--sh2)}
+.dc .th{height:150px;background:var(--surface3);display:grid;place-items:center;font-size:40px;overflow:hidden}.dc .th img{width:100%;height:100%;object-fit:cover}
+.dc .b{padding:12px 14px}.dc .t{font-weight:500}.dc .m{font-size:12.5px;color:var(--muted);margin-top:3px}
+.tabs2{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs2 a{background:var(--surface2);color:var(--ink2);border-radius:999px;padding:6px 14px;font-size:13px}.tabs2 a.on{background:var(--blue-soft);color:#001d35}
+</style>{% endblock %}
+{% block body %}
+<div class="ph"><div><h1>Designs</h1><div class="sub">sketches, schematics, PCB, enclosure, wiring, photos — with versions and tap-to-label pins</div></div>
+<div class="actions"><a class="btn sec" href="{{url_for('hardware')}}">Parts list</a><a class="btn sec" href="{{url_for('hw.connections')}}">Connections</a></div></div>
+{% set f = request.args.get('type','') %}
+<div class="tabs2"><a class="{{ 'on' if not f }}" href="{{url_for('hw.designs')}}">All</a>{% for k,l,ic in HW_TYPES %}<a class="{{ 'on' if f==k }}" href="{{url_for('hw.designs',type=k)}}">{{ic}} {{l}}</a>{% endfor %}</div>
+<div class="dg">
+{% for d in designs if not f or d.type==f %}
+<a class="dc" href="{{url_for('hw.design',did=d.id)}}"><div class="th">{% if d.thumb %}<img src="{{url_for('uploaded',fn=d.thumb)}}">{% else %}{{ TYPE_ICON.get(d.type,'📄') }}{% endif %}</div>
+<div class="b"><div class="t">{{d.title}}</div><div class="m">{{ TYPE_LABEL.get(d.type,'Other') }} · v{{d.nv}} · {{d.npins}} pins · <span class="tag {{ 'ok' if d.status=='approved' else 'warn' if d.status=='review' else '' }}" style="padding:0 7px">{{ dict(HW_STATUSES)[d.status] }}</span></div></div></a>
+{% else %}<div class="card empty" style="grid-column:1/-1"><b>No designs yet</b>Add a sketch from your phone camera, a schematic PDF, PCB image or enclosure drawing below.</div>{% endfor %}
+</div>
+<details class="card" style="margin-top:16px" {% if not designs %}open{% endif %}><summary style="font-weight:500">+ Add a design</summary>
+<form method="post" action="{{url_for('hw.design_new')}}" enctype="multipart/form-data" style="margin-top:8px">
+  <div class="grid g3"><div><label>Title</label><input name="title" required placeholder="Main board v1 / Roof enclosure / Sensor wiring"></div>
+  <div><label>Type</label><select name="type">{% for k,l,ic in HW_TYPES %}<option value="{{k}}">{{ic}} {{l}}</option>{% endfor %}</select></div>
+  <div><label>File (photo, PNG/JPG, PDF, Gerber zip, STL/STEP…)</label><input type="file" name="file" accept="image/*,.pdf,.zip,.stl,.step,.stp,.kicad_sch,.kicad_pcb,.sch,.brd,.fzz,.dxf,.svg" capture="environment"></div></div>
+  <label>Notes</label><input name="notes" placeholder="what this is, what changed"><br><br><button>Add design</button></form></details>
+{% endblock %}
