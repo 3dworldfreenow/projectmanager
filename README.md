@@ -1,92 +1,138 @@
-# IoT PM — team project workspace (Flask)
+# Rainflow
 
-For a software owner working with an IoT / hardware team on a weather station and other IoT projects.
+**A self-hosted workspace for small IoT / hardware teams.** Chat, calls, tasks, hardware tracking, firmware, agreements, payments — and live sensor data from your ESP32 devices — in one app you run on your own server. Built for a software owner working with an IoT engineer on a weather station; works for any small hardware project.
 
-## Features
-### Project management
-- **Board** — Kanban (Backlog → To do → In progress → Review → Done), drag-and-drop, filters by assignee / type / label, quick-add per column
-- **Task page** — description, decision/outcome, checklist, subtasks, dependencies (blocked by / blocks), time logging vs estimate, labels, links to hardware / firmware / milestone, and a **dated log**: notes with @mentions, files, images, **voice and video notes recorded in the browser**
-- **My tasks**, **Timeline** (Gantt with dependency arrows, overdue, milestones), **Calendar** (due dates, milestones, firmware, tests, calls, activity per day)
-- **Push notifications (browser closed)** — Web Push (VAPID, no third-party service): incoming calls ring like a phone app, new messages / mentions / assignments arrive when you're not online. Enable per device on the Notifications page. Android: Chrome (installed or not). iPhone: add to Home Screen first (iOS 16.4+). Set `VAPID_EMAIL=you@example.com` in the service file (contact address required by push services).
-- **Notifications** — in-app bell + toasts for assignments, mentions, comments on your tasks, due/overdue reminders; optional **email** (SMTP_HOST/PORT/USER/PASS/FROM) and **Telegram** (TELEGRAM_BOT_TOKEN) per user
-- **Reports** — progress by status and member, completed this week, overdue, upcoming, hours logged, milestones; **PDF report** download
-- Old "Research" items are migrated into tasks automatically (type = research) with their logs and files
+- Single Python/Flask app, SQLite database, no external services required
+- Works as an installable mobile app (PWA) with push notifications
+- Voice/video calls and group meetings with guests, recorded on your server
+- Live charts from devices over HTTP or MQTT, with an API for your own tools
 
-### Live IoT data (ESP32 & more)
-- **Devices** page (`/data`): add a device → get an API key; live values, auto-refreshing charts (1 h / 6 h / 24 h / 7 d), threshold alerts (→ in-app + push), send commands, CSV export.
-- **Data in**: `POST /api/v1/data` with header `X-Device-Key` and a JSON of numeric fields — or **MQTT** on `rainflow/<key>/data` (Mosquitto on the VPS; set `MQTT_HOST/PORT/USER/PASS`, `uv pip install paho-mqtt`).
-- **Commands out**: `POST /api/v1/command` → MQTT `rainflow/<key>/cmd` instantly, or returned in the next HTTP response / `GET /api/v1/commands`.
-- **Data out**: `/api/v1/devices`, `/api/v1/latest`, `/api/v1/readings?device=&field=&from=&to=&format=csv` (login, device key, or `API_READ_TOKEN`).
-- **API & ESP32 docs** page (`/api/docs`) with copy-paste sketches (HTTP deep-sleep node, MQTT two-way node), curl, Python, and the broker setup commands.
+Repo: https://github.com/3dworldfreenow/projectmanager · Status: in active use, under development (see `TODO.md`)
 
-### Mobile app (PWA)
-- Installable: Chrome on Android shows an **Install** banner; on iPhone use Share → *Add to Home Screen*. Opens full-screen with its own icon, bottom tab bar (Home · Chat · Board · Calendar · Alerts), offline page.
-- Chat loads the latest 50 messages and fetches older ones as you scroll up; search covers the full history on the server. Activity is paginated by day.
+---
 
-### Team & communication
-- **First-run setup** — creates your admin account + first teammate; no passwords in code
-- **Invite links (admin)** — create a link with a role (Guest, IoT Engineer, …), expiry and number of uses; share via WhatsApp / share sheet; the person picks their own username & password
-- **Meeting rooms (group calls)** — start from Calls / dashboard / chat, or press ➕ during a 1:1 call. Members join by link directly; **anyone else (no account) opens the link, enters a name and waits until the host admits them** (Admit / Deny banner with sound). Guests can only be in that room — nothing else in the app. Mesh WebRTC (good for up to ~5 people), every participant's view is recorded to the server and listed under Calls.
-- **In-call controls** — mute, camera off, switch front/rear camera, full screen (automatic on phones); recording stays on through all of it
-- **Team members (admin)** — add people, set roles (Project Manager, IoT Engineer, Hardware Tester, custom…), reset passwords, disable, make admin
-- **Team chat** — saved forever; in-chat search; reply/quote; pin important messages (pinned bar); @mentions (highlighted + sound); voice notes (hold 🎤); edit (previous versions visible to all); delete; unread badges
-- **Calls inside chat** — voice 📞 / video 🎥 (WebRTC peer-to-peer), pick who to call, ringtone + vibration, missed-call list with badge; **server-side recording**: chunks stream to the server every 2 s during the call, so the recording survives a dropped phone or closed tab. Playback in *Call Recordings*.
-- **Documents** — notes + file uploads (datasheets, schematics, specs)
-- **Agreement** — versioned; every member can click "I accept"; **PDF export** with acceptances + timestamps
-- **Activity feed** — everything that changed, with "since your last login" highlighted
-- **Hardware list** — parts, qty, cost, supplier, status, part photo, datasheet link, low-stock alert (min qty), **BOM export to Excel**; every edit keeps the previous version
-- **Hardware tests** — pass/fail log linked to parts and to the firmware version tested; attach photos / CSV logs / scope shots
-- **Firmware versions** — version, target board, release notes, .bin/.zip upload, dev → testing → stable
-- **Milestones & payments** — tied to the current agreement version; amounts, due dates, paid/ref tracking, totals; **invoice PDF** once delivered/paid
-- Multiple projects; Telegram-style light UI; works on phones
+## What's inside
 
-See `TODO.md` for what is not built yet.
+| Area | What you get |
+|---|---|
+| **Overview** | Project pulse: tests passing, milestones, payments, tasks done, low-stock parts, device status, recent chat/activity |
+| **Board / Tasks** | Kanban (Backlog → To do → In progress → Review → Done), drag-and-drop, filters. Each task has a dated log (notes, @mentions, files, images, **voice & video notes recorded in the browser**), checklist, subtasks, dependencies, time tracking, labels, links to hardware / firmware / milestone, decision box |
+| **Timeline · Calendar · My tasks · Reports** | Gantt with dependency arrows, month calendar of everything dated, personal task list, progress report with PDF |
+| **Chat** | Team chat with reply, pin, @mentions, voice notes, edit history, delete, search, file/image sharing, unread badges |
+| **Calls & meetings** | 1:1 voice/video from chat; **meeting rooms** where anyone can join by link (no account) after the host admits them; mute / camera off / front-rear switch / full screen; **every call recorded to the server** |
+| **Notifications** | In-app bell + toasts; **push to phone with the browser closed** (calls ring, messages, mentions, assignments, due reminders, sensor alerts); optional email / Telegram |
+| **Hardware** | Parts list with cost, supplier, photo, datasheet, low-stock alerts, version history, BOM export to Excel |
+| **Hardware tests** | Pass/fail log linked to parts and firmware versions, attachments |
+| **Firmware** | Versions with release notes and binaries, dev → testing → stable |
+| **Documents · Agreement · Milestones** | File store; versioned agreement each member accepts (PDF export with timestamps); milestones with amounts, due dates, paid status and invoice PDF |
+| **Live data** | Devices with API keys, values and charts per sensor field, threshold alerts, commands to devices, CSV export |
+| **API & ESP32 docs** | In-app docs with copy-paste ESP32 sketches (HTTP and MQTT), curl, Python |
+| **Team members** | Roles, invite links, backups & export, Google Drive backup |
 
-## Run
+## How it fits together
+
 ```
+ ESP32 / sensors ──HTTP POST or MQTT──▶ ┌─────────────────────────┐
+                                        │  Rainflow (Flask)       │──▶ Web Push (FCM/APNs) ──▶ phones
+ Browser / PWA  ◀──HTTPS (Apache/Nginx)─▶│  app.py  pm.py  iot.py  │
+       │                                 │  SQLite  +  uploads/     │──▶ Google Drive backups
+       └── WebRTC (peer-to-peer) ──▶ coturn (TURN relay for mobile data)
+```
+
+| File | Role |
+|---|---|
+| `app.py` | Core: auth, users/invites, chat, calls & meeting rooms, documents, agreement, hardware, tests, firmware, milestones, activity, backups, PDF/Excel export |
+| `pm.py` | Project management: tasks/board, timeline, calendar, notifications, push subscriptions, reports |
+| `iot.py` | Devices, data ingestion (HTTP + MQTT), commands, alerts, read API, live-data page |
+| `webpush.py` | Web Push (RFC 8291 / VAPID) implemented on `cryptography` — no third-party push service |
+| `templates/` | Jinja pages. `base.html` holds the theme, navigation, PWA shell and site-wide call/notification scripts |
+| `static/` | PWA manifest, icons, service worker (`sw.js`) |
+| `backup.sh` | Nightly backup script (cron) |
+| `iotpm.db`, `uploads/` | **Your data.** Not in git. Back these up |
+
+Everything is server-rendered HTML with small vanilla-JS enhancements (polling, WebRTC, charts). No build step, no Node, no frontend framework.
+
+## Run it locally
+
+```bash
 git clone https://github.com/3dworldfreenow/projectmanager
 cd projectmanager
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 python app.py
 ```
-Open http://localhost:5000 — the first visit shows a **setup page** to create the admin and the first teammate.
-Everyone can change their own password (sidebar → Change password); admins manage members at **Team members**.
+Open http://localhost:5000 — the first visit shows a **setup page** to create the admin and the first teammate. Nothing else to configure for local use (calls work on localhost).
 
-### Install trouble?
-If `pip`/`uv` fails building **pillow** (old server, old gcc), install the core first and skip PDF:
-```
-uv pip install --python .venv flask werkzeug openpyxl
-```
-The app runs fully; PDF export falls back to a print-to-PDF page. Then try `uv pip install --python .venv "reportlab<4.3" "pillow<11"` to enable real PDFs.
+> Old server / old gcc and `pillow` fails to build? Install the core first: `pip install flask werkzeug openpyxl cryptography` — PDFs fall back to print-to-PDF pages.
 
-## Letting the team connect
-Browsers only allow camera/mic on **https://** (or localhost), so for calls over the internet run the app
-behind an HTTPS tunnel (`ngrok http 5000`, Cloudflare Tunnel) or a server with a certificate.
-**Calls across mobile data / strict NAT need a TURN server.** Get free credentials at metered.ca (or run coturn), then add to the systemd unit:
-```
-Environment=TURN_URL=turn:a.relay.metered.ca:80,turn:a.relay.metered.ca:443 TURN_USER=xxxx TURN_PASS=yyyy
-```
-Optional notification channels (same place): `SMTP_HOST=smtp.gmail.com SMTP_PORT=587 SMTP_USER=you@gmail.com SMTP_PASS=app-password SMTP_FROM=you@gmail.com`
-and `TELEGRAM_BOT_TOKEN=123:abc` (create a bot with @BotFather; each user puts their chat id on the Notifications page). Set `APP_URL=https://iot.opirsys.com` so links in emails/Telegram work.
-and `systemctl daemon-reload && systemctl restart rainflow`. Incoming calls ring on every page of the app (banner + sound), with a browser notification if the tab is in the background.
-For production, serve with `waitress-serve --port 5000 app:app` instead of the dev server.
+## Deploy on a server (how the reference install runs)
+
+The production instance runs on a CentOS VPS behind Apache with Let's Encrypt, as a systemd service.
+
+1. **App** in `/opt/rainflow/projectmanager`, venv in `.venv`, service `rainflow` on `127.0.0.1:5020`:
+   ```ini
+   # /etc/systemd/system/rainflow.service
+   [Service]
+   WorkingDirectory=/opt/rainflow/projectmanager
+   Environment=HOST=127.0.0.1 PORT=5020 SECRET_KEY=<long random> APP_URL=https://your.domain
+   ExecStart=/opt/rainflow/projectmanager/.venv/bin/python app.py
+   Restart=always
+   ```
+2. **Reverse proxy with HTTPS** (required: browsers only allow camera/mic/push on https). Apache: `ProxyPass / http://127.0.0.1:5020/`, `LimitRequestBody 524288000`, then `certbot --apache`.
+3. **TURN server** so calls work over mobile data: `coturn` on the same VPS, then `TURN_URL=turn:your.domain:3478 TURN_USER=… TURN_PASS=…` in the service file.
+4. **Update**: `git pull && systemctl restart rainflow` (don't restart during a meeting — rooms are in memory).
+
+### All settings (environment variables in the service file)
+
+| Variable | Purpose |
+|---|---|
+| `HOST`, `PORT`, `SECRET_KEY`, `APP_URL` | Bind address, port, session secret, public URL used in links |
+| `TURN_URL`, `TURN_USER`, `TURN_PASS` | TURN relay for calls across NAT / mobile data |
+| `VAPID_EMAIL` | Contact address sent with push messages (any valid email) |
+| `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS`, `MQTT_TLS` | MQTT broker for device data (`pip install paho-mqtt`) |
+| `API_READ_TOKEN` | Lets external tools read device data (`Authorization: Bearer …`) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Email notifications (per-user opt-in) |
+| `TELEGRAM_BOT_TOKEN` | Telegram notifications (per-user opt-in with chat id) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `BACKUP_TOKEN` | Google Drive backups (connect once in the browser) |
+
+## Devices & API (ESP32)
+
+1. Live data → *Add a device* → copy its key (`rf_…`).
+2. Send readings — any JSON fields become charts:
+   ```bash
+   curl -X POST https://your.domain/api/v1/data -H "X-Device-Key: rf_xxx" \
+        -H "Content-Type: application/json" -d '{"temp":24.3,"hum":58,"rain_mm":0.2}'
+   ```
+   or publish the same JSON to MQTT topic `rainflow/<key>/data`.
+3. Commands to the device: `POST /api/v1/command {"device":1,"cmd":"relay","value":1}` → MQTT `rainflow/<key>/cmd`, or returned in the next HTTP response.
+4. Read data: `/api/v1/devices`, `/api/v1/latest`, `/api/v1/readings?device=1&field=temp&from=…&format=csv`.
+
+Full reference with complete ESP32 sketches (HTTP deep-sleep node, MQTT two-way node) and the Mosquitto setup commands: **API & ESP32 docs** page inside the app (`/api/docs`).
 
 ## Backups
-Everything lives in `iotpm.db` (SQLite) + `uploads/` (files, firmware, `recordings/`).
 
-**Manual** — Team members page (admin) → *Backup & export*: download a backup zip (with or without call recordings), or export all data as CSV/JSON.
+Your data is `iotpm.db` + `uploads/`.
+- **Manual**: Team members → *Backup & export* (zip with/without recordings; CSV/JSON export).
+- **Nightly**: `chmod +x backup.sh` and add to cron: `30 2 * * * /opt/rainflow/projectmanager/backup.sh >> /var/log/rainflow-backup.log 2>&1` (keeps 14 days in `backups/`).
+- **Google Drive**: create an OAuth client (Google Cloud Console → Drive API → OAuth client ID, web application, redirect URI `https://your.domain/admin/gdrive/callback`), set `GOOGLE_CLIENT_ID/SECRET` + `BACKUP_TOKEN`, then *Connect Google Drive* in the app. Backups land in a *Rainflow backups* folder (newest 30 kept).
+- **Restore**: stop the service, unzip the backup over `iotpm.db` and `uploads/`, start the service.
 
-**Automatic (nightly, on the server)** — keeps 14 days in `backups/`:
-```
-chmod +x /opt/rainflow/projectmanager/backup.sh
-(crontab -l 2>/dev/null; echo "30 2 * * * /opt/rainflow/projectmanager/backup.sh >> /var/log/rainflow-backup.log 2>&1") | crontab -
-```
+## Limits to know
 
-**Google Drive (off-server copy, recommended)** — connect once in the browser, then every backup is uploaded to a *Rainflow backups* folder in that Drive (newest 30 kept):
-1. Create free OAuth credentials: https://console.cloud.google.com → *APIs & Services* → *Enable APIs* → enable **Google Drive API** → *Credentials* → *Create credentials* → *OAuth client ID* → type **Web application** → Authorised redirect URI: `https://iot.opirsys.com/admin/gdrive/callback` → copy the client ID and secret. (On the *OAuth consent screen* add your Google account as a test user.)
-2. Add to the service file: `GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… BACKUP_TOKEN=<random string>` and restart.
-3. Team members → *Connect Google Drive* → sign in → done. *Back up to Drive now* uploads immediately; `backup.sh` uploads nightly (it uses `BACKUP_TOKEN` — put `BACKUP_TOKEN=…` and `PORT=5020` in root's crontab environment or export them at the top of backup.sh).
+- Group calls are mesh WebRTC — fine up to ~5 participants; more needs an SFU (LiveKit/Janus).
+- Meeting rooms and call signaling live in memory: a service restart ends active calls.
+- Push notifications on iPhone require the app to be added to the Home Screen (iOS 16.4+).
+- SQLite is plenty for a team; move to Postgres only if you reach hundreds of users or millions of readings.
 
-**Restore** — stop the service, unzip the backup into the app folder (replacing `iotpm.db` and `uploads/`), start the service.
+## Contributing / extending
+
+- Add a page: route in the matching blueprint (`app.py` core, `pm.py` tasks, `iot.py` devices), a template extending `base.html`, and a nav entry in the `groups` list in `base.html`.
+- Database changes: add `CREATE TABLE IF NOT EXISTS` to the module's `SCHEMA`, and an `ALTER TABLE` line in `init_db()`'s migration list for existing installs.
+- Keep pages dependency-free (no CDN requirement) so the app works on a LAN without internet.
+- Test on a phone width — every page is checked at 390 px.
+
+Roadmap and known gaps: `TODO.md`.
+
+## License
+
+MIT — use it, change it, run it for your own team.

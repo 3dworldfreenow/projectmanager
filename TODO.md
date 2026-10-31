@@ -1,4 +1,6 @@
-# TODO — not yet built
+# Roadmap / TODO
+
+What exists is described in README.md. This is what is **not** built yet, roughly by priority.
 
 ## Must do before using over the internet
 - [ ] **HTTPS** — camera/mic only work on https:// (or localhost). Use `ngrok http 5000`, Cloudflare Tunnel, or a server with a Let's Encrypt cert.
@@ -33,9 +35,12 @@
 - [ ] Firmware: diff of release notes between versions, OTA update endpoint for the ESP32.
 - [ ] Milestones: invoice numbering per payee, GST field, payment reminders.
 
-## Weather station specific
-- [ ] Live sensor data page (ESP32 → MQTT/HTTP → SQLite → chart).
-- [ ] Device status (last seen, battery, RSSI) and alerts.
+## Devices / live data
+- [x] Live sensor data (HTTP + MQTT), charts, alerts, commands, API.
+- [ ] Per-field units and display names (e.g. show "Temperature °C" instead of `temp`).
+- [ ] Downsampling / retention policy for old readings (keep raw 30 days, hourly averages after).
+- [ ] OTA firmware update endpoint for ESP32 (serve the "stable" binary from the Firmware page).
+- [ ] Device offline alert (no data for N minutes).
 
 ## Nice to have
 - [ ] Weekly email digest of activity.
