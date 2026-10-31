@@ -1,11 +1,11 @@
 {% extends "base.html" %}{% block title %}Overview · Rainflow{% endblock %}
 {% block pagetitle %}Overview{% endblock %}
 {% block head %}<style>
-.pulse{background:linear-gradient(135deg,#1f66c2 0%,#2f7de1 55%,#3d93f0 100%);color:#fff;border-radius:16px;padding:22px 24px;margin-bottom:16px;box-shadow:0 10px 30px -12px rgba(31,102,194,.55);position:relative;overflow:hidden}
+.pulse{background:var(--blue);color:#fff;border-radius:24px;padding:24px 26px;margin-bottom:16px;box-shadow:none;position:relative;overflow:hidden}
 .pulse::after{content:"";position:absolute;right:-60px;top:-80px;width:260px;height:260px;border-radius:50%;background:rgba(255,255,255,.08)}
-.pulse h1{color:#fff;font-size:20px}.pulse .sub{color:rgba(255,255,255,.78);font-size:13px;margin-top:2px}
+.pulse h1{color:#fff;font-size:22px;font-weight:400}.pulse .sub{color:rgba(255,255,255,.78);font-size:13px;margin-top:2px}
 .rings{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px}
-.ring{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:10px 12px}
+.ring{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.14);border:0;border-radius:16px;padding:12px 14px}
 .ring svg{width:52px;height:52px;flex-shrink:0;transform:rotate(-90deg)}
 .ring circle{fill:none;stroke-width:5}.ring .bg{stroke:rgba(255,255,255,.22)}.ring .fg{stroke:#fff;stroke-linecap:round}
 .ring .v{font-size:18px;font-weight:600;line-height:1.1}.ring .k{font-size:12px;color:rgba(255,255,255,.82)}
@@ -13,7 +13,7 @@
 .chip.alert{background:#fff;color:#b43232;font-weight:600}
 .list{display:flex;flex-direction:column}.li{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--line)}.li:last-child{border-bottom:0;padding-bottom:0}.li:first-child{padding-top:0}
 .li .t{flex:1;min-width:0}.li .t b{font-weight:600;display:block}.li .t .s{color:var(--muted);font-size:12.5px;margin-top:1px}
-.avs{display:flex}.avs .avatar{width:28px;height:28px;font-size:12px;border:2px solid #2a76d6;margin-left:-8px}.avs .avatar:first-child{margin-left:0}
+.avs{display:flex}.avs .avatar{width:28px;height:28px;font-size:12px;border:2px solid var(--blue);margin-left:-8px}.avs .avatar:first-child{margin-left:0}
 @media(max-width:860px){.rings{grid-template-columns:1fr 1fr}.pulse{padding:18px 16px}}
 </style>{% endblock %}
 {% block body %}
