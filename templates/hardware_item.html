@@ -2,7 +2,7 @@
 {% block pagetitle %}Hardware{% endblock %}
 {% block body %}
 <a href="{{url_for('hardware')}}">← Parts list</a>
-<div class="row">{% if item.photo %}<img src="{{url_for('uploaded',fn=item.photo)}}" style="width:72px;height:72px;object-fit:cover;border-radius:12px">{% endif %}<h1 style="margin:0">{{item.name}} <span class="tag info">v{{item.version}}</span>{% if item.datasheet %} <a class="btn sec sm" href="{{item.datasheet}}" target="_blank">📄 Datasheet</a>{% endif %}</h1></div><br>
+<div class="row">{% if item.photo %}<img src="{{url_for('uploaded',fn=item.photo)}}" style="width:72px;height:72px;object-fit:cover;border-radius:12px">{% endif %}<h1 style="margin:0">{{item.name}} <span class="tag info">v{{item.version}}</span>{% if item.datasheet %} <a class="btn sec sm" href="{{item.datasheet}}" target="_blank">📄 Datasheet</a>{% endif %}</h1><div style="flex:1"></div>{% if is_admin %}<form method="post" action="/admin/delete/hardware/{{item.id}}" onsubmit="return confirm('Delete this part (and its history and connections)? This cannot be undone.')" style="display:inline"><button class="btn danger sm" title="Delete (admin)">🗑</button></form>{% endif %}</div><br>
 <form class="card" method="post" enctype="multipart/form-data" style="margin-top:14px">
   <div class="grid g4">
     <div><label>Name</label><input name="name" value="{{item.name}}" required></div>

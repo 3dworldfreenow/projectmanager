@@ -13,7 +13,7 @@
   <br><br><button>Add version</button>
 </form></details>
 {% for f in items %}<div class="card"><div class="row"><b style="flex:1;font-size:17px">{{f.version}} <span class="muted" style="font-weight:400">· {{f.target}}</span></b>
-<span class="tag {{ 'ok' if f.status=='stable' else 'warn' if f.status=='testing' else 'bad' if f.status=='deprecated' else 'info' }}">{{f.status}}</span><span class="muted">{{f.author}} · {{f.ts}}</span></div>
+<span class="tag {{ 'ok' if f.status=='stable' else 'warn' if f.status=='testing' else 'bad' if f.status=='deprecated' else 'info' }}">{{f.status}}</span><span class="muted">{{f.author}} · {{f.ts}}</span>{% if is_admin %}<form method="post" action="/admin/delete/firmware/{{f.id}}" onsubmit="return confirm('Delete this firmware version? This cannot be undone.')" style="display:inline"><button class="btn danger sm" title="Delete (admin)">🗑</button></form>{% endif %}</div>
 {% if f.notes %}<pre style="margin:8px 0">{{f.notes}}</pre>{% endif %}
 <div class="row">{% if f.filename %}<a class="btn sec sm" href="{{url_for('uploaded',fn=f.filename)}}">⬇ {{f.orig_name}}</a>{% endif %}
 {% for st in ['dev','testing','stable','deprecated'] if st!=f.status %}<form method="post" action="{{url_for('firmware_status',fid=f.id,status=st)}}"><button class="btn sec sm">→ {{st}}</button></form>{% endfor %}</div></div>

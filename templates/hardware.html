@@ -19,10 +19,10 @@
 <div class="actions"><span class="range" id="vtoggle" style="display:inline-flex;background:var(--surface2);border-radius:999px;padding:3px"><button type="button" data-v="simple" style="background:transparent;color:var(--ink2);padding:5px 14px;min-height:0;border:0;font-size:13px">Simple</button><button type="button" data-v="full" style="background:transparent;color:var(--ink2);padding:5px 14px;min-height:0;border:0;font-size:13px">Detailed</button></span><a class="btn sec" href="{{url_for('hw.designs')}}">Designs</a><a class="btn sec" href="{{url_for('hw.connections')}}">Connections</a><a class="btn sec" href="{{url_for('hardware_export')}}">Export Excel</a></div></div>
 
 <div class="vsimple">
-<div class="card tight"><table><tr><th>Part</th><th>Value</th><th>Qty/board</th><th>Have</th><th>Cost</th><th>Status</th><th>Supplier</th></tr>
+<div class="card tight"><table><tr><th>Part</th><th>Value</th><th>Qty/board</th><th>Have</th><th>Cost</th><th>Status</th><th>Supplier</th>{% if is_admin %}<th></th>{% endif %}</tr>
 {% for h in items %}<tr><td><a href="{{url_for('hardware_item',hid=h.id)}}" style="color:var(--ink);font-weight:500">{{h.name}}</a>{% if h.refs %} <span class="muted" style="font-family:ui-monospace,monospace;font-size:12px">{{h.refs}}</span>{% endif %}{% if h.datasheet %} <a href="{{h.datasheet}}" target="_blank">📄</a>{% endif %}</td>
 <td>{{h.value or ''}}{% if h.package %} <span class="muted">{{h.package}}</span>{% endif %}</td><td>{{h.per_board or 1}}</td><td class="{{ 'short' if (h.qty or 0) < need[h.id] }}">{{h.qty or 0}}</td><td>₹{{'%g'|format(h.cost or 0)}}</td>
-<td><span class="tag {{ 'ok' if h.status in ('tested','installed','received') else 'warn' if h.status=='ordered' else '' }}">{{h.status}}</span></td><td class="muted">{{h.supplier or ''}}</td></tr>
+<td><span class="tag {{ 'ok' if h.status in ('tested','installed','received') else 'warn' if h.status=='ordered' else '' }}">{{h.status}}</span></td><td class="muted">{{h.supplier or ''}}</td>{% if is_admin %}<td>{% if is_admin %}<form method="post" action="/admin/delete/hardware/{{h.id}}" onsubmit="return confirm('Delete this part? This cannot be undone.')" style="display:inline"><button class="btn danger sm" title="Delete (admin)">🗑</button></form>{% endif %}</td>{% endif %}</tr>
 {% else %}<tr><td colspan="7"><div class="empty"><b>No parts yet</b>Switch to Detailed to add parts.</div></td></tr>{% endfor %}</table></div>
 <div class="row" style="margin-top:4px"><span class="muted">{{items|length}} parts · ₹{{'%.0f'|format(per_board_cost)}} per board · {{boards}} board{{'s' if boards>1}} · {{short|length}} still to buy</span><div style="flex:1"></div><button type="button" class="sec sm" onclick="setView('full')">+ Add parts / details</button></div>
 </div>
@@ -60,7 +60,7 @@
 </div>
 
 {% if short %}<details class="flash"><summary style="cursor:pointer">🛒 <b>{{short|length}} parts still to buy</b> for {{boards}} board{{'s' if boards>1}} — tap to see the shopping list</summary>
-<table style="margin-top:8px"><tr><th>Part</th><th>Need</th><th>Have</th><th>To buy</th><th>Supplier</th></tr>{% for r in short %}<tr><td><a href="{{url_for('hardware_item',hid=r.id)}}">{{r.name}}</a>{% if r.value %} <span class="muted">{{r.value}}</span>{% endif %}</td><td>{{need[r.id]}}</td><td>{{r.qty or 0}}</td><td><b>{{need[r.id] - (r.qty or 0)}}</b></td><td class="muted">{{r.supplier or '—'}}</td></tr>{% endfor %}</table></details>{% endif %}
+<table style="margin-top:8px"><tr><th>Part</th><th>Need</th><th>Have</th><th>To buy</th><th>Supplier</th>{% if is_admin %}<th></th>{% endif %}</tr>{% for r in short %}<tr><td><a href="{{url_for('hardware_item',hid=r.id)}}">{{r.name}}</a>{% if r.value %} <span class="muted">{{r.value}}</span>{% endif %}</td><td>{{need[r.id]}}</td><td>{{r.qty or 0}}</td><td><b>{{need[r.id] - (r.qty or 0)}}</b></td><td class="muted">{{r.supplier or '—'}}</td></tr>{% endfor %}</table></details>{% endif %}
 
 {% for cat in HW_CATEGORIES if bom_groups.get(cat) %}{% set rows=bom_groups[cat] %}
 <div class="cat"><h3>{{cat}} <span class="c">{{rows|length}} · ₹{{'%.0f'|format(rows|map(attribute='cost')|map('default',0,true)|sum)}}/board</span></h3>

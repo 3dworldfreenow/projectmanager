@@ -268,7 +268,7 @@ def users():
             except sqlite3.IntegrityError:
                 flash("That username already exists")
         return redirect(url_for("users"))
-    rows = d.execute("SELECT * FROM users ORDER BY rowid").fetchall()
+    rows = d.execute("SELECT rowid, * FROM users ORDER BY rowid").fetchall()
     invites = d.execute("SELECT * FROM invites WHERE expires>=? AND uses<max_uses ORDER BY ts DESC", (now(),)).fetchall()
     base_url = os.environ.get("APP_URL") or request.url_root.rstrip("/")
     return render_template("users.html", users=rows, invites=invites, base_url=base_url)
@@ -498,7 +498,7 @@ def chat_send():
 def chat_action(mid, action):
     m = db().execute("SELECT * FROM messages WHERE id=?", (mid,)).fetchone()
     if not m: return jsonify(ok=False), 404
-    if action == "delete" and m["sender"] == session["user"]:
+    if action == "delete" and (m["sender"] == session["user"] or session.get("is_admin")):
         db().execute("UPDATE messages SET deleted=1, body='', filename=NULL WHERE id=?", (mid,))
     elif action == "pin":
         db().execute("UPDATE messages SET pinned=1-pinned WHERE id=?", (mid,))
@@ -1234,6 +1234,62 @@ def invoice(mid):
             ("Agreement", f"v{m['agreement_version']}" if m["agreement_version"] else "—")]
     if m["status"] == "paid": meta.append(("Paid on", f"{m['paid_on']} ref {m['paid_ref'] or ''}"))
     return _pdf("Invoice", [table, "Thank you."], meta)
+
+# ---------------------------------------------------------- admin delete ----
+DELETABLE = {
+    # table: (extra cleanup statements with ? = id, files-column to unlink)
+    "messages":   ([("UPDATE messages SET deleted=1, body='', filename=NULL, orig_name=NULL WHERE id=?", None)], None),
+    "documents":  ([("DELETE FROM documents WHERE id=?", "filename")], None),
+    "hardware":   ([("DELETE FROM hardware_history WHERE hardware_id=?", None), ("DELETE FROM test_files WHERE test_id IN (SELECT id FROM tests WHERE hardware_id=?)", None),
+                    ("UPDATE tests SET hardware_id=NULL WHERE hardware_id=?", None), ("UPDATE design_pins SET hardware_id=NULL WHERE hardware_id=?", None),
+                    ("DELETE FROM connections WHERE from_part=? OR to_part=?", None), ("DELETE FROM hardware WHERE id=?", "photo")], None),
+    "tests":      ([("DELETE FROM test_files WHERE test_id=?", None), ("DELETE FROM tests WHERE id=?", None)], None),
+    "firmware":   ([("UPDATE tests SET firmware_id=NULL WHERE firmware_id=?", None), ("UPDATE tasks SET firmware_id=NULL WHERE firmware_id=?", None), ("DELETE FROM firmware WHERE id=?", "filename")], None),
+    "milestones": ([("UPDATE tasks SET milestone_id=NULL WHERE milestone_id=?", None), ("DELETE FROM milestones WHERE id=?", None)], None),
+    "agreements": ([("DELETE FROM acceptances WHERE agreement_id=?", None), ("DELETE FROM agreements WHERE id=?", None)], None),
+    "calls":      ([("DELETE FROM calls WHERE id=?", None)], "recordings"),
+    "task_comments": ([("DELETE FROM task_comments WHERE id=?", "filename")], None),
+    "activity":   ([("DELETE FROM activity WHERE id=?", None)], None),
+    "notifications": ([("DELETE FROM notifications WHERE id=?", None)], None),
+    "projects":   ([("DELETE FROM messages WHERE project_id=?", None), ("DELETE FROM activity WHERE project_id=?", None), ("DELETE FROM projects WHERE id=?", None)], None),
+    "users":      ([("DELETE FROM push_subs WHERE username=(SELECT username FROM users WHERE rowid=?)", None),
+                    ("DELETE FROM users WHERE rowid=? AND is_admin=0", None)], None),
+}
+
+@app.route("/admin/delete/<table>/<int:rid>", methods=["POST"])
+@admin_required
+def admin_delete(table, rid):
+    """Admin can delete anything. Files on disk are removed too; recordings of a call are deleted."""
+    if table not in DELETABLE: abort(404)
+    d = db(); stmts, special = DELETABLE[table]
+    label = ""
+    try:
+        row = d.execute(f"SELECT * FROM {table} WHERE {'rowid' if table=='users' else 'id'}=?", (rid,)).fetchone()
+        if row:
+            for k in ("title", "name", "version", "body", "username", "caller"):
+                if k in row.keys() and row[k]: label = str(row[k])[:60]; break
+    except Exception:
+        row = None
+    for sql, filecol in stmts:
+        if filecol and row and filecol in row.keys() and row[filecol]:
+            try: os.unlink(os.path.join(UPLOADS, row[filecol]))
+            except Exception: pass
+        try:
+            d.execute(sql, (rid, rid) if sql.count("?") == 2 else (rid,))
+        except sqlite3.OperationalError:
+            pass   # table from a module that is not enabled
+    if special == "recordings":
+        import glob as _g
+        for f in _g.glob(os.path.join(RECORDINGS, f"call_{rid}_*.webm")):
+            try: os.unlink(f)
+            except Exception: pass
+    if table == "projects" and session.get("pid") == rid:
+        session["pid"] = 1
+    log_activity(f"deleted {table[:-1] if table.endswith('s') else table}", label, ""); d.commit()
+    flash(f"Deleted {table[:-1] if table.endswith('s') else table}" + (f": {label}" if label else ""))
+    nxt = request.form.get("next") or request.referrer or url_for("dashboard")
+    if request.headers.get("X-Requested-With") == "fetch": return jsonify(ok=True)
+    return redirect(nxt)
 
 # ---------------------------------------------------------------- backup ----
 def make_backup_zip(include_rec=False, by="system"):

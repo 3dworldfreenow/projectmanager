@@ -6,7 +6,7 @@
 <h2 style="margin:18px 0 6px">{{ 'Today' if day==today else day }}</h2>
 <div class="card tight">{% for a in rows %}<div class="row" style="padding:9px 14px;border-bottom:1px solid var(--line);{% if since and a.ts>since %}background:#fffbe6{% endif %}">
 <span class="avatar av{{ (a.who|length % 3)+1 }}" style="width:28px;height:28px;font-size:12px">{{a.who[0]|upper}}</span>
-<div style="flex:1;min-width:0"><b>{{a.who}}</b> {{a.action}} {% if a.link %}<a href="{{a.link}}">{{a.detail}}</a>{% else %}{{a.detail}}{% endif %}</div><span class="muted">{{a.ts[11:]}}</span></div>{% endfor %}</div>
+<div style="flex:1;min-width:0"><b>{{a.who}}</b> {{a.action}} {% if a.link %}<a href="{{a.link}}">{{a.detail}}</a>{% else %}{{a.detail}}{% endif %}</div><span class="muted">{{a.ts[11:]}}</span>{% if is_admin %}<form method="post" action="/admin/delete/activity/{{a.id}}" style="display:inline"><button class="sec sm" style="padding:2px 8px;min-height:0" title="remove entry">✕</button></form>{% endif %}</div>{% endfor %}</div>
 {% else %}<div class="card empty"><b>Nothing yet</b>Changes across the project will show here.</div>{% endfor %}
 <div class="row" style="justify-content:center;margin-top:10px">{% if page>1 %}<a class="btn sec" href="{{url_for('activity',page=page-1)}}">‹ Newer</a>{% endif %}{% if has_more %}<a class="btn sec" href="{{url_for('activity',page=page+1)}}">Older ›</a>{% endif %}</div>
 {% endblock %}

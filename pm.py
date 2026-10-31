@@ -445,7 +445,11 @@ def task_comment(tid):
 @pm.route("/tasks/<int:tid>/comment/<int:cid>/delete", methods=["POST"])
 @login_required
 def task_comment_delete(tid, cid):
-    db().execute("DELETE FROM task_comments WHERE id=? AND task_id=? AND author=?", (cid, tid, session["user"])); db().commit()
+    if session.get("is_admin"):
+        db().execute("DELETE FROM task_comments WHERE id=? AND task_id=?", (cid, tid))
+    else:
+        db().execute("DELETE FROM task_comments WHERE id=? AND task_id=? AND author=?", (cid, tid, session["user"]))
+    db().commit()
     return redirect(url_for("pm.task_item", tid=tid))
 
 

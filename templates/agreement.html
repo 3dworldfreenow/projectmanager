@@ -79,7 +79,7 @@
 
 {% if versions|length > 1 %}
 <div class="card"><h3 style="margin-bottom:10px">Version history</h3>
-<div class="tl">{% for v in versions %}<details class="v {{ 'cur' if loop.first }}"><summary><b>v{{v.version}}</b> · {{v.author}} · {{v.ts}} · {% set h=hist[v.id] %}{% if h %}signed by {{ h.keys()|join(', ') }}{% else %}no signatures{% endif %} · <a href="{{url_for('agreement_pdf',aid=v.id)}}" target="_blank">PDF</a></summary><pre style="margin:8px 0 4px;font-size:13px;color:var(--ink2)">{{v.body}}</pre></details>{% endfor %}</div></div>
+<div class="tl">{% for v in versions %}<details class="v {{ 'cur' if loop.first }}"><summary><b>v{{v.version}}</b> · {{v.author}} · {{v.ts}} · {% set h=hist[v.id] %}{% if h %}signed by {{ h.keys()|join(', ') }}{% else %}no signatures{% endif %} · <a href="{{url_for('agreement_pdf',aid=v.id)}}" target="_blank">PDF</a> {% if is_admin %}<form method="post" action="/admin/delete/agreements/{{v.id}}" onsubmit="return confirm('Delete this agreement version? This cannot be undone.')" style="display:inline"><button class="btn danger sm" title="Delete (admin)">🗑</button></form>{% endif %}</summary><pre style="margin:8px 0 4px;font-size:13px;color:var(--ink2)">{{v.body}}</pre></details>{% endfor %}</div></div>
 {% endif %}
 {% endblock %}
 {% block scripts %}<script>

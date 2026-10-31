@@ -45,6 +45,6 @@
 <td class="row" style="gap:4px">
  <form method="post" action="{{url_for('user_update',name=u.username)}}" class="row" style="gap:4px"><input type="hidden" name="action" value="reset"><input name="password" type="password" placeholder="new password" style="width:130px"><button class="btn sec sm">Reset</button></form>
  {% if u.username!=user %}<form method="post" action="{{url_for('user_update',name=u.username)}}"><input type="hidden" name="action" value="toggle"><button class="btn sec sm">{{ 'Disable' if u.active else 'Enable' }}</button></form>
- <form method="post" action="{{url_for('user_update',name=u.username)}}"><input type="hidden" name="action" value="admin"><button class="btn sec sm">{{ 'Remove admin' if u.is_admin else 'Make admin' }}</button></form>{% endif %}
+ <form method="post" action="{{url_for('user_update',name=u.username)}}"><input type="hidden" name="action" value="admin"><button class="btn sec sm">{{ 'Remove admin' if u.is_admin else 'Make admin' }}</button></form>{% if not u.is_admin %}<form method="post" action="/admin/delete/users/{{u.rowid}}" onsubmit="return confirm('Delete user {{u.username}}? Their messages and work stay, attributed to the name.')"><button class="btn danger sm">Delete</button></form>{% endif %}{% endif %}
 </td></tr>{% endfor %}</table></div>
 {% endblock %}

@@ -52,7 +52,7 @@
     <h3 style="margin-bottom:2px">Log</h3><div class="muted" style="margin-bottom:4px">{{comments|length}} entries, newest first — notes, files, images, voice and video, each stamped with who and when.</div>
     {% for e in comments %}<div class="entry"><div class="when"><b>{{e.ts[:10]}}</b>{{e.ts[11:]}}</div><div class="c">
       <div class="by"><b>{{e.author}}</b>{% if e.kind!='note' %}<span class="kind">{{ {'voice':'🎤 voice','video':'🎥 video','image':'🖼 image','file':'📎 file'}.get(e.kind,e.kind) }}</span>{% endif %}
-      {% if e.author==user %}<form method="post" action="{{url_for('pm.task_comment_delete',tid=t.id,cid=e.id)}}" style="display:inline" onsubmit="return confirm('Delete this entry?')"><button class="del">delete</button></form>{% endif %}</div>
+      {% if e.author==user or is_admin %}<form method="post" action="{{url_for('pm.task_comment_delete',tid=t.id,cid=e.id)}}" style="display:inline" onsubmit="return confirm('Delete this entry?')"><button class="del">delete</button></form>{% endif %}</div>
       {% if e.body %}<pre class="body">{{e.body}}</pre>{% endif %}
       {% if e.filename %}{% set u=url_for('uploaded',fn=e.filename) %}{% if e.kind=='voice' %}<audio controls preload="metadata" src="{{u}}"></audio>{% elif e.kind=='video' %}<video controls preload="metadata" src="{{u}}"></video>{% elif e.kind=='image' %}<a href="{{u}}" target="_blank"><img src="{{u}}"></a>{% else %}<a class="btn sec sm" href="{{u}}" style="margin-top:6px">📎 {{e.orig_name}}</a>{% endif %}{% endif %}
     </div></div>{% else %}<div class="empty" style="padding:20px"><b>No entries yet</b>Write a finding, attach a file, or record a voice or video note.</div>{% endfor %}
