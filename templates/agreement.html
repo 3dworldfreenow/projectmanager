@@ -70,7 +70,8 @@
 
 <div class="card editor" id="editor">
   <div class="row" style="margin-bottom:8px"><h3 style="flex:1">{{ 'Propose a new version' if current else 'Write the agreement' }}</h3><span class="hint">One clause per line (numbered or “-”). A line starting with ## becomes a section heading.</span></div>
-  <div class="tpl"><button type="button" class="sec sm" onclick="tpl()">Insert starter template</button>{% if current %}<button type="button" class="sec sm" onclick="document.getElementById('body').value=document.getElementById('cur').value">Start from current version</button>{% endif %}</div>
+  <div class="tpl"><span id="dict"></span><span class="hint" style="align-self:center">Speak a point — each sentence becomes the next numbered clause. Say “new section” / “नया सेक्शन” followed by a title to start a section.</span></div>
+<div class="tpl"><button type="button" class="sec sm" onclick="tpl()">Insert starter template</button>{% if current %}<button type="button" class="sec sm" onclick="document.getElementById('body').value=document.getElementById('cur').value">Start from current version</button>{% endif %}</div>
   <form method="post"><textarea name="body" id="body" placeholder="## Scope&#10;1. Deepak owns all software, firmware and cloud work.&#10;2. Ravi owns hardware selection, assembly and bench testing.&#10;## Payment&#10;3. Payment per milestone within 7 days of delivery."></textarea>
     <textarea id="cur" style="display:none">{{ current.body if current }}</textarea>
     <div class="row" style="margin-top:10px"><button>Save as version {{ (current.version + 1) if current else 1 }}</button><span class="hint">Everyone will be asked to accept the new version.</span></div></form>
@@ -82,6 +83,11 @@
 {% endif %}
 {% endblock %}
 {% block scripts %}<script>
+makeDictation(document.getElementById('dict'),(text)=>{const t=document.getElementById('body');let v=t.value.replace(/\s+$/,'');
+ const m=text.match(/^(new section|नया सेक्शन|naya section)\s*(.*)$/i);
+ if(m){v+=(v?'\n\n':'')+'## '+(m[2]||'Section').replace(/[.。]$/,'');}
+ else{const n=(v.match(/^\s*\d+[\.\)]/gm)||[]).length+1;let line=text.replace(/^[,.\s]+/,'');line=line.charAt(0).toUpperCase()+line.slice(1);if(!/[.!?।]$/.test(line))line+='.';v+=(v?'\n':'')+n+'. '+line;}
+ t.value=v;t.scrollTop=t.scrollHeight;});
 function tpl(){const t=document.getElementById('body');if(t.value.trim()&&!confirm('Replace the editor text with the template?'))return;
 t.value=`## Scope of work
 1. {{user}} is responsible for all software: firmware, cloud/server, app and integrations.

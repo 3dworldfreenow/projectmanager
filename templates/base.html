@@ -179,6 +179,29 @@ details summary{cursor:pointer;list-style:none}details summary::-webkit-details-
 {% with m = get_flashed_messages() %}{% for x in m %}<div class="flash">{{x}}</div>{% endfor %}{% endwith %}
 {% block body %}{% endblock %}
 </main>
+<style>
+.dict{display:inline-flex;align-items:center;gap:4px}.dict .mic{width:38px;height:38px;border-radius:50%;padding:0;min-height:38px;display:inline-grid;place-items:center;background:var(--surface);color:var(--blue);border:1px solid var(--line2)}
+.dict .mic.on{background:var(--red);color:#fff;border-color:var(--red);animation:dictp 1.2s infinite}@keyframes dictp{50%{box-shadow:0 0 0 6px rgba(179,38,30,.18)}}
+.dict select{width:auto;padding:6px 26px 6px 10px;font-size:12.5px;border-radius:999px}.dict .live{font-size:12px;color:var(--muted);max-width:220px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+</style>
+<script>
+// Dictation (speech → text) using the browser's recognizer. Chrome / Edge / Android Chrome / iOS Safari.
+// Usage: makeDictation(container, onText, {lines:true}) — onText(text, isFinal)
+function makeDictation(el,onText,opt){opt=opt||{};const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ el.classList.add('dict');el.innerHTML='<select title="Language"><option value="en-IN">English</option><option value="hi-IN">हिंदी</option><option value="auto">Hindi + English</option></select><button type="button" class="mic" title="Dictate">🎤</button><span class="live"></span>';
+ const sel=el.querySelector('select'),btn=el.querySelector('.mic'),live=el.querySelector('.live');try{sel.value=localStorage.getItem('rf_dict_lang')||'en-IN';}catch(e){}
+ if(!SR){btn.disabled=true;btn.title='Voice typing is not supported in this browser — use Chrome';live.textContent='no voice support';return;}
+ let rec=null,on=false;
+ function start(){const r=new SR();r.lang=sel.value==='auto'?'hi-IN':sel.value;r.continuous=true;r.interimResults=true;r.maxAlternatives=1;
+  r.onresult=e=>{let fin='',inter='';for(let i=e.resultIndex;i<e.results.length;i++){const t=e.results[i][0].transcript;if(e.results[i].isFinal)fin+=t;else inter+=t;}
+   if(inter)live.textContent=inter;if(fin){live.textContent='';onText(fin.trim(),true);}};
+  r.onerror=e=>{if(e.error==='not-allowed')alert('Microphone blocked — allow it in the browser address bar.');if(e.error!=='no-speech')stop();};
+  r.onend=()=>{if(on)try{r.start();}catch(x){}};r.start();rec=r;}
+ function stop(){on=false;btn.classList.remove('on');btn.textContent='🎤';live.textContent='';if(rec){rec.onend=null;try{rec.stop();}catch(e){}rec=null;}}
+ btn.onclick=()=>{if(on){stop();return;}on=true;btn.classList.add('on');btn.textContent='■';try{localStorage.setItem('rf_dict_lang',sel.value);}catch(e){}start();};
+ sel.onchange=()=>{try{localStorage.setItem('rf_dict_lang',sel.value);}catch(e){}if(on){stop();btn.click();}};
+ return {stop};}
+</script>
 {% block scripts %}{% endblock %}
 {% if user and request.endpoint!='chat' %}
 <div class="tabs">

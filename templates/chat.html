@@ -89,10 +89,12 @@ body.incall .topbar{display:none!important}
   <label class="ib sec" style="margin:0;cursor:pointer" title="Attach file / image / code">📎<input type="file" id="file" style="display:none"></label>
   <input type="text" id="body" placeholder="Message (use @name to mention)" autocomplete="off" list="members">
   <datalist id="members">{% for u in members %}<option value="@{{u}} ">{% endfor %}</datalist>
+  <button type="button" class="ib sec" id="dictBtn" title="Voice typing (speech to text)">⌨️</button>
   <button type="button" class="ib sec" id="voiceBtn" title="Hold to record a voice note">🎤</button>
   <button class="ib" title="Send"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12L20 4l-4 16-4-7z"/></svg></button>
 </form>
 <div id="pending" class="muted" style="padding:2px 10px"></div>
+<div id="dictbar" style="display:none;background:#fff;padding:6px 10px;border-top:1px solid var(--line);flex-shrink:0;align-items:center;gap:8px"><span id="dict"></span><span class="muted" style="font-size:12px">speak, then press send</span></div>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -152,6 +154,7 @@ async function poll(){try{const r=await fetch('/chat/poll?after='+lastId);const 
   if(b&&e.body&&b.textContent!==e.body&&!$('q').value&&!e.deleted){fmtBody(b,e.body);applyEdited(e.id);}});}catch(e){}}
 {% if not q %}setInterval(poll,1500);{% endif %}
 const fileIn=$('file'),pend=$('pending');
+$('dictBtn').onclick=()=>{const b=$('dictbar');const show=b.style.display==='none';b.style.display=show?'flex':'none';if(show&&!b.dataset.init){b.dataset.init=1;makeDictation($('dict'),t=>{const i=$('body');i.value=(i.value?i.value+' ':'')+t;i.focus();});}};
 fileIn.onchange=()=>{pend.textContent=fileIn.files[0]?'📎 '+fileIn.files[0].name:'';};
 $('f').onsubmit=async e=>{e.preventDefault();const b=$('body');
  if(!b.value.trim()&&!fileIn.files[0])return;

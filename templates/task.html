@@ -59,6 +59,7 @@
 
     <form class="composer" id="lf" method="post" action="{{url_for('pm.task_comment',tid=t.id)}}" enctype="multipart/form-data">
       <textarea name="body" id="body" placeholder="Add a note… use @name to mention someone" list="members"></textarea>
+      <div class="row" style="margin-top:6px;gap:8px"><span id="dict"></span><span class="muted" style="font-size:12px">voice typing — Hindi or English</span></div>
       <input type="hidden" name="kind" id="kind" value="note">
       <div id="preview"><span id="pvlabel" class="muted"></span><span id="pvmedia"></span><button type="button" class="btn sec sm" onclick="discard()">Discard</button></div>
       <div class="rbar">
@@ -121,6 +122,7 @@
 <script>
 document.querySelectorAll('.entry .body').forEach(el=>{const t=el.textContent;el.innerHTML='';t.split(/(@\w+)/g).forEach(p=>{if(/^@\w+$/.test(p)){const s=document.createElement('span');s.className='mention';s.textContent=p;el.appendChild(s);}else el.append(p);});});
 const $=id=>document.getElementById(id);let rec,chunks=[],blob=null,recKind=null,stream=null,timer=null,t0=0;
+makeDictation($('dict'),t=>{const b=$('body');b.value=(b.value?b.value+(b.value.endsWith('\n')?'':' '):'')+t;});
 function picked(){const f=$('file').files[0];if(!f)return;blob=null;$('kind').value='note';$('pvlabel').textContent='Attached: '+f.name;$('pvmedia').innerHTML='';$('preview').classList.add('on');}
 function discard(){blob=null;$('file').value='';$('kind').value='note';$('preview').classList.remove('on');$('pvmedia').innerHTML='';}
 async function toggleRec(k){
