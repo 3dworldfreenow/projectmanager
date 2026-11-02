@@ -11,6 +11,8 @@
 .short{color:var(--red);font-weight:500}
 .addrow{display:grid;grid-template-columns:2.2fr 1.3fr 140px 1fr 1.1fr auto;gap:10px;align-items:end}
 .addrow label{margin-top:0}
+.vchips{display:none;gap:6px;flex-wrap:wrap;align-items:center;margin:2px 0 8px;padding:8px 10px;background:var(--blue-tint);border-radius:12px}.vchips.on{display:flex}
+.vchips .lb{font-size:12.5px;color:var(--blue2);margin-right:2px}.vchips button{background:#fff;color:var(--ink);border:1px solid var(--line2);border-radius:999px;padding:4px 11px;font-size:13px;min-height:0}.vchips button:hover{background:var(--blue-tint);color:var(--blue2);box-shadow:none}.vchips button.on,.vchips button.on:hover{background:var(--blue);color:#fff;border-color:var(--blue)}
 .addrow2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
 .vend{font-size:12.5px;margin-top:2px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}.vend a{color:var(--blue)}.vend .nt{color:var(--ink2)}.addrow .f-btn button{min-height:42px;padding:0 26px}
 .stepper{display:flex;align-items:center;border:1px solid var(--line2);border-radius:var(--r);overflow:hidden;background:#fff}
@@ -36,12 +38,13 @@ table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;bor
   <div class="row" style="margin-bottom:8px"><h3 style="flex:1">Add a part</h3><span class="muted hide-m">just the name is enough — fill the rest later</span></div>
   <div class="addrow">
     <div class="f-name"><label>Part name</label><input name="name" id="pname" required placeholder="e.g. Resistor, ESP32, Rain gauge" list="commonparts"></div>
-    <div class="f-val"><label>Size / value</label><input name="value" placeholder="10k · 100nF · 2 m"></div>
+    <div class="f-val"><label>Size / value</label><input name="value" id="pval" placeholder="10k · 100nF · 2 m" list="valuelist"><datalist id="valuelist"></datalist></div>
     <div class="f-qty"><label>How many</label><div class="stepper"><button type="button" onclick="step(this,-1)">−</button><input name="per_board" type="number" min="1" value="1"><button type="button" onclick="step(this,1)">+</button></div></div>
     <div class="f-cost"><label>Price ₹ (each)</label><input name="cost" type="number" step="0.01" min="0" placeholder="0"></div>
     <div class="f-st"><label>Status</label><select name="status"><option value="planned">Need to buy</option><option value="ordered">Ordered</option><option value="received">Have it</option></select></div>
     <div class="f-btn"><button>Add</button></div>
   </div>
+  <div class="vchips" id="vchips"></div>
   <div class="addrow2">
     <div><label>Where to buy <span class="muted" style="font-weight:400">— link or shop name</span></label><input name="supplier" placeholder="https://robu.in/…  or  Lamington Road – Shah Electronics" list="vendors"></div>
     <div><label>Note <span class="muted" style="font-weight:400">— local vendor phone, address, anything</span></label><input name="notes" placeholder="Rameshbhai 98xxxxxx10, shop no. 12, ₹40 if 10+"></div>
@@ -113,7 +116,43 @@ table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;bor
 </div>
 {% endblock %}
 {% block scripts %}<script>
-function pick(n){const i=document.getElementById('pname');i.value=n;i.focus();const v=document.querySelector('.addrow input[name=value]');if(['Resistor','Capacitor','LED','Diode','Wire'].includes(n))v.focus();}
+// common sizes / values per part type — first one is filled in automatically
+const PRESETS={
+ 'resistor':{v:['10k','1k','4.7k','220Ω','330Ω','100k','47k','2.2k','100Ω','1M'],p:1,lb:'Resistance'},
+ 'capacitor':{v:['100nF','10µF','1µF','22pF','100µF','470µF','10nF','1000µF'],p:2,lb:'Capacitance'},
+ 'led':{v:['Red 5mm','Green 5mm','Blue 5mm','White 5mm','Red 3mm','RGB 5mm','Red 0805','Green 0805'],p:2,lb:'Colour / size'},
+ 'diode':{v:['1N4007','1N5819','1N4148','Zener 3.3V','Zener 5.1V'],p:2,lb:'Type'},
+ 'transistor':{v:['2N2222','BC547','BC557','IRLZ44N','AO3400'],p:5,lb:'Type'},
+ 'wire':{v:['22AWG red, 2 m','22AWG black, 2 m','24AWG multicolour, 5 m','Jumper M-M, 20 pcs','Jumper M-F, 20 pcs'],p:40,lb:'Gauge / length'},
+ 'jst connector':{v:['2 pin','3 pin','4 pin','5 pin','6 pin'],p:5,lb:'Pins'},
+ 'pin header':{v:['1×40 male','1×40 female','2×20 male'],p:10,lb:'Size'},
+ 'screw terminal':{v:['2 pin 5.08mm','3 pin 5.08mm','2 pin 3.5mm'],p:6,lb:'Pins / pitch'},
+ 'esp32 devkit':{v:['DevKit v1 30-pin','DevKitC 38-pin','ESP32-C3 Mini','ESP32-S3'],p:450,lb:'Board'},
+ 'bme280 sensor':{v:['I2C 3.3V','I2C/SPI 5V module'],p:320,lb:'Version'},
+ 'dht22 sensor':{v:['module with PCB','bare sensor'],p:250,lb:'Version'},
+ 'rain gauge':{v:['tipping bucket 0.2794 mm/tip','tipping bucket 0.5 mm/tip'],p:1800,lb:'Type'},
+ 'anemometer':{v:['reed switch, 2.4 km/h per pulse','hall effect, analog 0–5V'],p:2200,lb:'Type'},
+ 'solar panel':{v:['6V 2W','6V 3.5W','12V 5W','5V 1W'],p:350,lb:'Rating'},
+ '18650 battery':{v:['3.7V 2600mAh','3.7V 3000mAh','3.7V 3500mAh'],p:220,lb:'Capacity'},
+ 'tp4056 charger':{v:['USB-C with protection','Micro-USB with protection'],p:30,lb:'Version'},
+ 'buck converter':{v:['MP1584 3A','LM2596 3A','Mini 360'],p:60,lb:'Module'},
+ 'relay module':{v:['1 channel 5V','2 channel 5V','1 channel 3.3V'],p:70,lb:'Channels'},
+ 'enclosure box':{v:['IP65 150×100×70','IP65 200×120×75','IP65 100×68×50'],p:280,lb:'Size'},
+ 'screws m3':{v:['M3×6','M3×10','M3×12 + nuts','M3 nylon standoffs kit'],p:50,lb:'Size'},
+ 'capacitor (electrolytic)':{v:['10µF 25V','100µF 25V','470µF 16V','1000µF 16V'],p:4,lb:'Value'}};
+function presetFor(name){const n=(name||'').toLowerCase().trim();if(!n)return null;if(PRESETS[n])return PRESETS[n];
+ const k=Object.keys(PRESETS).find(k=>n.startsWith(k)||n.startsWith(k.split(' ')[0])&&k.split(' ')[0].length>3);return k?PRESETS[k]:null;}
+function showValues(name,fill){const pr=presetFor(name),box=document.getElementById('vchips'),val=document.getElementById('pval'),dl=document.getElementById('valuelist'),cost=document.querySelector('.addrow input[name=cost]');
+ if(!pr){box.classList.remove('on');dl.innerHTML='';return;}
+ dl.innerHTML=pr.v.map(x=>`<option value="${x}">`).join('');
+ box.innerHTML=`<span class="lb">${pr.lb}:</span>`+pr.v.map(x=>`<button type="button">${x}</button>`).join('');box.classList.add('on');
+ box.querySelectorAll('button').forEach(b=>b.onclick=()=>{val.value=b.textContent;mark();});
+ if(fill&&!val.value){val.value=pr.v[0];}if(fill&&!cost.value&&pr.p)cost.value=pr.p;mark();
+ function mark(){box.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.textContent===val.value));}
+ val.oninput=mark;}
+function pick(n){const i=document.getElementById('pname');i.value=n;document.getElementById('pval').value='';document.querySelector('.addrow input[name=cost]').value='';showValues(n,true);const v=document.getElementById('pval');v.focus();v.select();}
+document.getElementById('pname').addEventListener('change',e=>showValues(e.target.value,true));
+document.getElementById('pname').addEventListener('input',e=>{if(presetFor(e.target.value))showValues(e.target.value,false);else document.getElementById('vchips').classList.remove('on');});
 function step(b,d){const i=b.parentElement.querySelector('input');i.value=Math.max(1,(+i.value||1)+d);}
 async function adj(id,d){const r=await (await fetch('/hardware/'+id+'/quick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delta:d})})).json();const q=document.getElementById('q'+id);q.textContent=r.qty;q.classList.toggle('short',r.qty<+q.dataset.need);}
 async function setst(id,v){const r=await (await fetch('/hardware/'+id+'/quick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:v})})).json();const q=document.getElementById('q'+id);q.textContent=r.qty;q.classList.toggle('short',r.qty<+q.dataset.need);}
