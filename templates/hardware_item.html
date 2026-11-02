@@ -18,6 +18,7 @@
     <div><label>Qty per board</label><input name="per_board" type="number" min="1" value="{{item.per_board or 1}}"></div>
     <div><label>Min. qty (low-stock alert)</label><input name="min_qty" type="number" value="{{item.min_qty or 0}}"></div>
     <div><label>Datasheet link</label><input name="datasheet" value="{{item.datasheet or ''}}"></div>
+    <div><label>LCSC code {% if item.lcsc %}(<a href="https://www.lcsc.com/product-detail/{{item.lcsc}}.html" target="_blank" rel="noopener">open</a>){% endif %}</label><input name="lcsc" value="{{item.lcsc or ''}}" placeholder="C14663"></div>
     <div><label>Part photo {% if item.photo %}(<a href="{{url_for('uploaded',fn=item.photo)}}" target="_blank">current</a>){% endif %}</label><input type="file" name="photo" accept="image/*"></div>
   </div><label>Notes</label><input name="notes" value="{{item.notes}}"><br><br><button>Save (creates v{{item.version+1}})</button>
 </form>

@@ -54,7 +54,7 @@ def login_required(f):
 
 def init_hw(con):
     con.executescript(SCHEMA)
-    for col, typ in [("category", "TEXT"), ("value", "TEXT"), ("package", "TEXT"), ("refs", "TEXT"), ("per_board", "INTEGER DEFAULT 1")]:
+    for col, typ in [("category", "TEXT"), ("value", "TEXT"), ("package", "TEXT"), ("refs", "TEXT"), ("per_board", "INTEGER DEFAULT 1"), ("lcsc", "TEXT")]:
         try: con.execute(f"ALTER TABLE hardware ADD COLUMN {col} {typ}")
         except Exception: pass
     try: con.execute("ALTER TABLE projects ADD COLUMN boards INTEGER DEFAULT 1")
@@ -115,7 +115,9 @@ def design(did):
                      "WHERE p.version_id=? ORDER BY p.id", (cur["id"],)).fetchall() if cur else []
     parts = d.execute("SELECT id,name,refs,value FROM hardware WHERE project_id=? ORDER BY category,name", (pid(),)).fetchall()
     specs = json.loads(des["specs"] or "{}")
+    ibom_parts = d.execute("SELECT id,name,value,refs,package FROM hardware WHERE project_id=? AND IFNULL(refs,'')!='' ORDER BY category,name", (pid(),)).fetchall()
     return render_template("design.html", des=des, versions=versions, cur=cur, pins=pins, parts=parts, specs=specs,
+                           is_ibom=bool(cur) and is_ibom(cur["filename"]), ibom_parts=ibom_parts, ref=request.args.get("ref", ""),
                            is_img=is_img(cur["filename"]) if cur else False,
                            is_pdf=bool(cur) and cur["filename"].lower().endswith(".pdf"))
 
@@ -268,7 +270,7 @@ def guess_category(name):
              ("Sensor", ["sensor", "bme", "bmp", "dht", "ds18b20", "gauge", "anemometer", "vane", "ldr", "uv", "pir", "soil", "gas", "mq-", "rain", "wind"]),
              ("Connector / header", ["connector", "jst", "header", "terminal", "socket", "plug", "usb", "jack", "pin "]),
              ("Wire & cable", ["wire", "cable", "awg", "jumper", "ribbon"]),
-             ("Power (battery, solar, regulator)", ["battery", "solar", "li-ion", "lipo", "18650", "charger", "tp4056", "regulator", "buck", "boost", "ldo", "adapter", "supply"]),
+             ("Power (battery, solar, regulator)", ["battery", "solar", "li-ion", "lipo", "18650", "charger", "tp4056", "regulator", "buck", "boost", "ldo", "adapter", "supply", "ams1117", "lm7805", "78l05", "ht7333", "mcp1700", "xc6206", "mp1584", "lm2596", "ap2112"]),
              ("Semiconductor / IC", ["transistor", "mosfet", "ic ", "opamp", "relay", "2n2222", "bc547", "ne555", "74hc"]),
              ("Mechanical / enclosure", ["box", "enclosure", "case", "pole", "bracket", "mount", "standoff", "gland", "shield", "pcb"]),
              ("Fastener", ["screw", "nut", "bolt", "washer", "spacer"]),
@@ -304,3 +306,231 @@ def parse_quick(line):
     else:
         out["name"] = t
     return out
+
+
+# =================================================================== BOM files ==
+# Import a BOM exported from KiCad, EasyEDA (Std/Pro), JLCPCB or any spreadsheet.
+REF_TYPE = [("FB", "Ferrite bead"), ("TP", "Test point"), ("SW", "Switch"), ("BT", "Battery"), ("LED", "LED"),
+            ("R", "Resistor"), ("C", "Capacitor"), ("L", "Inductor"), ("D", "Diode"), ("Q", "Transistor"),
+            ("U", None), ("IC", None), ("J", "Connector"), ("P", "Connector"), ("CN", "Connector"), ("K", "Relay"),
+            ("Y", "Crystal"), ("X", "Crystal"), ("F", "Fuse"), ("H", "Mounting hole"), ("M", "Motor"), ("BZ", "Buzzer"), ("LS", "Speaker")]
+PASSIVE = {"Resistor", "Capacitor", "Inductor", "Ferrite bead", "Fuse", "Crystal"}
+SMD_SIZE = re.compile(r"(?<!\d)(01005|0201|0402|0603|0805|1206|1210|1812|2010|2512)(?!\d)")
+
+def _ref_type(ref, footprint=""):
+    p = re.match(r"[A-Za-z]+", (ref or "").strip())
+    if not p: return None
+    p = p.group(0).upper()
+    for k, t in REF_TYPE:
+        if p == k:
+            if t == "Diode" and "LED" in (footprint or "").upper(): return "LED"
+            return t or ""
+    return None
+
+def _short_pkg(fp):
+    """'Resistor_SMD:R_0603_1608Metric' → '0603'; 'Package_TO_SOT_SMD:SOT-23' → 'SOT-23'."""
+    fp = (fp or "").strip()
+    if not fp: return ""
+    m = SMD_SIZE.search(fp)
+    if m: return m.group(1)
+    fp = fp.split(":")[-1]
+    for pre in ("R_", "C_", "L_", "D_", "LED_"):
+        if fp.startswith(pre): fp = fp[len(pre):]
+    fp = re.sub(r"_(Vertical|Horizontal|Metric|HandSolder|Pad[\d.x]+mm.*)$", "", fp).replace("_", " ")
+    return fp[:28]
+
+def _ref_sort(r):
+    m = re.match(r"([A-Za-z]+)(\d+)", r)
+    return (m.group(1), int(m.group(2))) if m else (r, 0)
+
+def _read_table(raw, filename):
+    """Return list of dict rows from CSV/TSV (any encoding, incl. EasyEDA UTF-16) or XLSX."""
+    import csv, io
+    fn = (filename or "").lower()
+    if fn.endswith((".xlsx", ".xlsm")):
+        from openpyxl import load_workbook
+        ws = load_workbook(io.BytesIO(raw), read_only=True, data_only=True).active
+        rows = [[("" if c is None else str(c)).strip() for c in r] for r in ws.iter_rows(values_only=True)]
+    else:
+        if raw[:2] in (b"\xff\xfe", b"\xfe\xff"): txt = raw.decode("utf-16")
+        else:
+            try: txt = raw.decode("utf-8-sig")
+            except UnicodeDecodeError: txt = raw.decode("latin-1")
+        first = txt.splitlines()[0] if txt.strip() else ""
+        delim = max(["\t", ",", ";"], key=first.count)
+        rows = [[c.strip() for c in r] for r in csv.reader(io.StringIO(txt), delimiter=delim)]
+    # header = first row that looks like a header (has a known column)
+    known = {"reference", "references", "designator", "ref", "refs", "value", "comment", "name", "footprint", "package", "qty", "quantity"}
+    for i, r in enumerate(rows[:15]):
+        if sum(1 for c in r if c.lower().strip(" #") in known) >= 2:
+            hdr = [c.strip() for c in r]
+            return [dict(zip(hdr, x)) for x in rows[i + 1:] if any(x)]
+    return []
+
+def parse_bom(raw, filename):
+    """Normalise any BOM file into grouped parts: name, value, package, refs, per_board, lcsc, part_no, maker, supplier, datasheet, cost."""
+    out = {}
+    for row in _read_table(raw, filename):
+        low = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
+        def g(*keys):
+            for k in keys:
+                for col, v in low.items():
+                    if v and (col == k or col.replace(" ", "_") == k or col.replace(" ", "") == k.replace("_", "")): return v
+            return ""
+        refs = g("reference", "references", "designator", "designators", "ref", "refs", "ref_des")
+        if refs.lower() in ("", "total") and not g("name", "value", "comment"): continue
+        refl = [r for r in re.split(r"[,\s;]+", refs) if r]
+        value = g("value", "comment", "val")
+        fp = g("footprint", "package", "case", "pcb_footprint")
+        lcsc = g("lcsc", "lcsc_part", "lcsc_part_#", "lcsc_part_number", "jlcpcb_part_#", "jlcpcb_part", "supplier_part", "lcsc#")
+        if lcsc and not re.fullmatch(r"C\d{2,9}", lcsc, re.I): lcsc = ""
+        mpn = g("manufacturer_part", "mpn", "mfr_part", "manufacturer_part_number", "part_number", "part_no", "mfr._part_#")
+        maker = g("manufacturer", "mfr", "brand")
+        qty = g("qty", "quantity", "qty_per_board", "count")
+        name = g("name", "description", "part")
+        t = _ref_type(refl[0], fp) if refl else None
+        if t in PASSIVE or t in ("LED", "Diode", "Connector", "Switch", "Test point", "Mounting hole"):
+            if not value: value = name                       # EasyEDA puts the value (10kΩ) in "Name"
+            pname = t
+        else:
+            pname = (name if name and name != value else value) or (t or "Part"); value = "" if pname == value else value
+        pkg = _short_pkg(fp)
+        key = (pname.lower(), value.lower(), pkg.lower(), lcsc.upper())
+        e = out.setdefault(key, dict(name=pname, value=value, package=pkg, refs=[], per_board=0, lcsc=lcsc.upper(), part_no=mpn,
+                                     maker=maker, supplier="LCSC" if lcsc else g("supplier", "vendor"), datasheet=g("datasheet") if g("datasheet").startswith("http") else "",
+                                     cost=g("price", "unit_price", "cost") or (str(float(re.sub(r"[^\d.]", "", g("lcsc_price")) or 0) * inr_rate()) if g("lcsc_price") else "")))
+        e["refs"] += refl
+        e["per_board"] += len(refl) if refl else int(float(qty or 1))
+        if refl and qty and len(refl) == 1 and int(float(qty)) > 1: e["per_board"] += int(float(qty)) - 1
+    parts = []
+    for e in out.values():
+        if any(r.upper().startswith(("TP", "H", "MH", "FID")) for r in e["refs"]) and not e["lcsc"] and e["name"] in ("Test point", "Mounting hole", "Part"):
+            continue                                            # board features, not parts to buy
+        e["refs"] = ",".join(sorted(set(e["refs"]), key=_ref_sort))
+        try: e["cost"] = float(re.sub(r"[^\d.]", "", str(e["cost"])) or 0)
+        except ValueError: e["cost"] = 0
+        e["category"] = guess_category(e["name"] + " " + e["value"])
+        parts.append(e)
+    return sorted(parts, key=lambda e: _ref_sort(e["refs"].split(",")[0]) if e["refs"] else ("~", 0))
+
+def import_bom(raw, filename, user):
+    """Insert parsed parts; if a part with the same name+value+package (or LCSC code) exists, update its refs/qty instead."""
+    d = db(); added = updated = 0
+    for e in parse_bom(raw, filename):
+        ex = None
+        if e["lcsc"]:
+            ex = d.execute("SELECT id FROM hardware WHERE project_id=? AND UPPER(IFNULL(lcsc,''))=?", (pid(), e["lcsc"])).fetchone()
+        if not ex:
+            ex = d.execute("SELECT id FROM hardware WHERE project_id=? AND LOWER(name)=? AND LOWER(IFNULL(value,''))=? AND LOWER(IFNULL(package,''))=?",
+                           (pid(), e["name"].lower(), e["value"].lower(), e["package"].lower())).fetchone()
+        if ex:
+            d.execute("UPDATE hardware SET refs=?, per_board=?, lcsc=COALESCE(NULLIF(?,''),lcsc), part_no=COALESCE(NULLIF(?,''),part_no), "
+                      "datasheet=COALESCE(NULLIF(?,''),datasheet), updated_by=?, ts=? WHERE id=?",
+                      (e["refs"], e["per_board"], e["lcsc"], e["part_no"], e["datasheet"], user, now(), ex["id"])); updated += 1
+        else:
+            d.execute("INSERT INTO hardware(project_id,name,category,value,package,refs,per_board,qty,cost,supplier,part_no,lcsc,datasheet,notes,status,updated_by,ts) "
+                      "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                      (pid(), e["name"], e["category"], e["value"], e["package"], e["refs"], e["per_board"] or 1, 0, e["cost"], e["supplier"],
+                       e["part_no"], e["lcsc"], e["datasheet"], e["maker"], "planned", user, now())); added += 1
+    d.commit()
+    return added, updated
+
+
+# ======================================================================= LCSC ==
+LCSC_URL = "https://wmsc.lcsc.com/ftps/wm/product/detail?productCode={}"
+
+def inr_rate():
+    try: return float(os.environ.get("LCSC_INR_RATE", "88"))
+    except ValueError: return 88.0
+
+def lcsc_info(code, fresh=False):
+    """Look up an LCSC part (C14663) → dict(name, maker, package, desc, price_usd, price_inr, ladder, stock, datasheet, url) or {error}."""
+    import urllib.request, time
+    code = (code or "").strip().upper()
+    if not re.fullmatch(r"C\d{2,9}", code): return {"error": "LCSC codes look like C14663"}
+    d = db(); key = "lcsc:" + code
+    r = d.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+    if r and not fresh:
+        c = json.loads(r["value"])
+        if time.time() - c.get("_t", 0) < 86400: return c
+    try:
+        req = urllib.request.Request(LCSC_URL.format(code), headers={"User-Agent": "Mozilla/5.0 (Rainflow BOM)", "Accept": "application/json"})
+        j = json.loads(urllib.request.urlopen(req, timeout=8).read().decode("utf-8"))
+        res = j.get("result") or {}
+        if not res: return {"error": f"{code} not found on LCSC"}
+        prices = res.get("productPriceList") or []
+        def usd(p): return float(p.get("usdPrice") or p.get("productPrice") or 0)
+        ladder = [{"qty": int(p.get("ladder") or 1), "usd": usd(p), "inr": round(usd(p) * inr_rate(), 2)} for p in prices]
+        info = dict(code=code, name=res.get("productModel") or "", maker=res.get("brandNameEn") or "", package=res.get("encapStandard") or "",
+                    desc=(res.get("productIntroEn") or res.get("productDescEn") or "")[:200], category=res.get("catalogName") or "",
+                    stock=int(res.get("stockNumber") or 0), datasheet=res.get("pdfUrl") or "",
+                    price_usd=ladder[0]["usd"] if ladder else 0, price_inr=ladder[0]["inr"] if ladder else 0, ladder=ladder,
+                    url=f"https://www.lcsc.com/product-detail/{code}.html", _t=time.time())
+        d.execute("INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)", (key, json.dumps(info))); d.commit()
+        return info
+    except Exception as ex:
+        return {"error": f"Could not reach LCSC ({type(ex).__name__}). Fill the fields by hand.", "url": f"https://www.lcsc.com/product-detail/{code}.html"}
+
+def price_for(info, qty):
+    """Best ladder price (₹) for buying qty pieces."""
+    best = info.get("price_inr") or 0
+    for s in info.get("ladder") or []:
+        if qty >= s["qty"]: best = s["inr"]
+    return best
+
+@hw.route("/hardware/lcsc")
+@login_required
+def lcsc_lookup():
+    return jsonify(lcsc_info(request.args.get("code", "")))
+
+@hw.route("/hardware/lcsc/refresh", methods=["POST"])
+@login_required
+def lcsc_refresh():
+    """Update price + stock note of every part that has an LCSC code."""
+    from app import log_activity
+    d = db(); ok = fail = 0
+    boards = (d.execute("SELECT boards FROM projects WHERE id=?", (pid(),)).fetchone() or {"boards": 1})["boards"] or 1
+    for h in d.execute("SELECT * FROM hardware WHERE project_id=? AND IFNULL(lcsc,'')!=''", (pid(),)).fetchall():
+        info = lcsc_info(h["lcsc"], fresh=True)
+        if info.get("error"): fail += 1; continue
+        d.execute("UPDATE hardware SET cost=?, datasheet=COALESCE(NULLIF(datasheet,''),?), part_no=COALESCE(NULLIF(part_no,''),?) WHERE id=?",
+                  (price_for(info, (h["per_board"] or 1) * boards), info["datasheet"], info["name"], h["id"])); ok += 1
+    d.commit(); log_activity("refreshed LCSC prices", f"{ok} parts", "/hardware")
+    flash(f"LCSC prices updated for {ok} part(s)" + (f" · {fail} could not be reached" if fail else "") + f" · ₹ = ${inr_rate():g}")
+    return redirect(url_for("hardware"))
+
+@hw.route("/hardware/export/jlc")
+@login_required
+def export_jlc():
+    """BOM in the format JLCPCB asks for when ordering assembled boards."""
+    import csv, io
+    rows = db().execute("SELECT * FROM hardware WHERE project_id=? AND IFNULL(refs,'')!='' ORDER BY category, name", (pid(),)).fetchall()
+    buf = io.StringIO(); w = csv.writer(buf); w.writerow(["Comment", "Designator", "Footprint", "LCSC Part #"])
+    for r in rows:
+        w.writerow([r["value"] or r["name"], r["refs"], r["package"] or "", r["lcsc"] or ""])
+    return Response(buf.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=BOM_JLCPCB.csv"})
+
+
+# ================================================================ iBOM viewer ==
+IBOM_BRIDGE = b"""<script>/* Rainflow bridge: highlight a part when the parent page asks */
+(function(){function look(r){var i=document.getElementById('reflookup');if(!i)return;i.value=r||'';i.dispatchEvent(new Event('input',{bubbles:true}));}
+window.addEventListener('message',function(e){if(e.data&&typeof e.data.rfRef==='string')look(e.data.rfRef);});
+window.addEventListener('load',function(){var m=location.search.match(/[?&]ref=([^&]+)/);if(m)setTimeout(function(){look(decodeURIComponent(m[1]));},300);});})();</script>"""
+
+def is_ibom(fn):
+    return bool(fn) and fn.lower().endswith((".html", ".htm"))
+
+@hw.route("/designs/ibom/<int:vid>")
+@login_required
+def ibom(vid):
+    """Serve an uploaded InteractiveHtmlBom page inside a sandbox (no access to Rainflow cookies or pages)."""
+    from app import UPLOADS
+    v = db().execute("SELECT * FROM design_versions WHERE id=?", (vid,)).fetchone() or abort(404)
+    if not is_ibom(v["filename"]): abort(404)
+    raw = open(os.path.join(UPLOADS, v["filename"]), "rb").read()
+    i = raw.lower().rfind(b"</body>")
+    raw = raw[:i] + IBOM_BRIDGE + raw[i:] if i >= 0 else raw + IBOM_BRIDGE
+    resp = Response(raw, mimetype="text/html")
+    resp.headers["Content-Security-Policy"] = "sandbox allow-scripts allow-popups; default-src 'self' 'unsafe-inline' data: blob:"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp

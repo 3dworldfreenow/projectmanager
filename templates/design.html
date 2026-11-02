@@ -21,6 +21,8 @@
 .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.toolbar .muted{font-size:12.5px}
 .filebox{padding:40px 20px;text-align:center;background:var(--surface2);border-radius:12px}
 @media(max-width:860px){.lay{grid-template-columns:1fr}}
+.ibrow{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}.ibrow:last-child{border:0}.ibrow .t{font-size:14px;min-width:0}
+.refs{display:flex;gap:4px;flex-wrap:wrap}.refc{font-family:ui-monospace,monospace;font-size:12px;padding:3px 8px;min-height:0;border-radius:6px;background:var(--surface2);color:var(--ink);border:1px solid var(--line)}.refc:hover,.refc.on{background:var(--blue);color:#fff;border-color:var(--blue)}
 </style>{% endblock %}
 {% block body %}
 <div class="ph"><div><a href="{{url_for('hw.designs')}}" class="muted">← Designs</a><h1 style="margin-top:4px">{{des.title}}</h1>
@@ -36,6 +38,9 @@
       {% for p in pins %}<div class="pin {{ 'part' if p.hardware_id }}" data-id="{{p.id}}" style="left:{{p.x}}%;top:{{p.y}}%" title="{{p.label}}{% if p.part_name %} · {{p.part_name}}{% endif %}">{{loop.index}}</div>{% endfor %}
       <div id="pinform"><h4 id="pf_title">New pin</h4><input id="pf_label" placeholder="Label, e.g. U1 ESP32 / mounting hole"><select id="pf_part"><option value="">— link to a part (optional) —</option>{% for p in parts %}<option value="{{p.id}}">{{p.name}}{% if p.refs %} ({{p.refs}}){% endif %}</option>{% endfor %}</select><input id="pf_note" placeholder="Note (optional)"><div class="row" style="gap:6px"><button type="button" onclick="savePin()">Save pin</button><button type="button" class="sec" onclick="closePin()">Cancel</button><button type="button" class="sec" id="pf_del" onclick="delPin()" style="margin-left:auto;color:var(--red)">Delete</button></div></div>
     </div>
+    {% elif cur and is_ibom %}
+    <div class="toolbar"><b>🟩 Interactive board</b><span class="muted">· tap a part below (or in the board's own list) to light it up</span><div style="flex:1"></div><input id="refq" placeholder="Find ref, e.g. R4" style="width:150px;padding:6px 10px" value="{{ref}}"><a class="btn sec sm" href="{{url_for('hw.ibom',vid=cur.id)}}" target="_blank" rel="noopener">Full screen</a></div>
+    <iframe id="ibom" sandbox="allow-scripts allow-popups" src="{{url_for('hw.ibom',vid=cur.id)}}{% if ref %}?ref={{ref|urlencode}}{% endif %}" style="width:100%;height:75vh;border:1px solid var(--line);border-radius:12px;background:#fff"></iframe>
     {% elif cur and is_pdf %}
     <div class="toolbar"><b>PDF</b><span class="muted">· pins work on images — export a PNG of the page to annotate it</span><div style="flex:1"></div><a class="btn sec sm" href="{{url_for('uploaded',fn=cur.filename)}}" target="_blank">Open</a></div>
     <iframe src="{{url_for('uploaded',fn=cur.filename)}}" style="width:100%;height:70vh;border:0;border-radius:12px;background:#fff"></iframe>
@@ -49,6 +54,20 @@
     <ul class="legend" id="legend">{% for p in pins %}<li data-id="{{p.id}}" onclick="focusPin({{p.id}})"><span class="n {{ 'part' if p.hardware_id }}">{{loop.index}}</span><div class="t"><b>{{p.label or '(no label)'}}</b>{% if p.part_name %} · <a href="{{url_for('hardware_item',hid=p.hardware_id)}}">{{p.part_name}}{% if p.part_refs %} ({{p.part_refs}}){% endif %}</a>{% endif %}{% if p.note %}<div class="s">{{p.note}}</div>{% endif %}</div></li>{% else %}<li class="muted" style="cursor:default">No pins yet — tap the image where a component, connector or hole is.</li>{% endfor %}</ul></div>
   {% endif %}
 
+  {% if cur and is_ibom %}
+  <div class="card"><div class="row" style="margin-bottom:6px"><h3>Parts on this board</h3><span class="muted">from the Parts list · tap a designator</span></div>
+    {% for p in ibom_parts %}<div class="ibrow"><div class="t"><a href="{{url_for('hardware_item',hid=p.id)}}">{{p.name}}</a>{% if p.value %} <span class="muted">{{p.value}}</span>{% endif %}{% if p.package %} <span class="muted">· {{p.package}}</span>{% endif %}</div>
+      <div class="refs">{% for r in p.refs.split(',') if r.strip() %}<button type="button" class="refc {{ 'on' if r.strip()==ref }}" data-ref="{{r.strip()}}">{{r.strip()}}</button>{% endfor %}</div></div>
+    {% else %}<div class="muted">No parts with designators yet — import the BOM file on the Parts page.</div>{% endfor %}
+  </div>
+  <script>
+  (function(){const fr=document.getElementById('ibom'),q=document.getElementById('refq');
+   function show(r){fr.contentWindow.postMessage({rfRef:r},'*');document.querySelectorAll('.refc').forEach(b=>b.classList.toggle('on',b.dataset.ref.toLowerCase()===r.toLowerCase()));}
+   document.querySelectorAll('.refc').forEach(b=>b.onclick=()=>{q.value=b.dataset.ref;show(b.dataset.ref);window.scrollTo({top:0,behavior:'smooth'});});
+   q.addEventListener('input',()=>show(q.value.trim()));})();
+  </script>
+  {% endif %}
+
   {% if des.notes %}<div class="card"><h3 style="font-size:13px;color:var(--muted);margin-bottom:6px">Notes</h3><pre>{{des.notes}}</pre></div>{% endif %}
 </div>
 
@@ -56,7 +75,8 @@
   <div class="card"><h3 style="margin-bottom:8px">Versions</h3>
     <div class="vlist">{% for v in versions %}<div class="v {{ 'cur' if cur and v.id==cur.id }}"><b>v{{v.version}}</b><a href="{{url_for('hw.design',did=des.id,v=v.id)}}" style="flex:1;color:var(--ink)">{{v.orig_name}}</a><span class="muted">{{v.by}} · {{v.ts[5:16]}}</span></div>{% if v.note %}<div class="muted" style="font-size:12px;margin:-4px 0 4px 34px">{{v.note}}</div>{% endif %}{% endfor %}</div>
     <form method="post" action="{{url_for('hw.design_version',did=des.id)}}" enctype="multipart/form-data" style="margin-top:10px">
-      <label>Upload new version</label><input type="file" name="file" required accept="image/*,.pdf,.zip,.stl,.step,.stp,.kicad_sch,.kicad_pcb,.sch,.brd,.fzz,.dxf,.svg" capture="environment">
+      <label>Upload new version</label><input type="file" name="file" required accept="image/*,.pdf,.html,.htm,.zip,.stl,.step,.stp,.kicad_sch,.kicad_pcb,.sch,.brd,.fzz,.dxf,.svg">
+      <div class="muted" style="font-size:12px;margin-top:4px">Tip: upload the <b>ibom.html</b> from the InteractiveHtmlBom plugin (KiCad / EasyEDA) to get a clickable board.</div>
       <label>What changed</label><input name="note" placeholder="moved J3, added pull-ups…">
       <label style="display:flex;align-items:center;gap:6px;margin-top:8px"><input type="checkbox" name="copy_pins" value="1" checked style="width:auto"> copy pins from previous version</label>
       <br><button class="sm">Upload v{{ (versions[0].version + 1) if versions else 1 }}</button></form></div>

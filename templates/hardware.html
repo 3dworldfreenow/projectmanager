@@ -15,7 +15,14 @@
 .vchips .lb{font-size:12.5px;color:var(--blue2);margin-right:2px}.vchips button{background:#fff;color:var(--ink);border:1px solid var(--line2);border-radius:999px;padding:4px 11px;font-size:13px;min-height:0}.vchips button.mine{border-style:dashed}.vchips button .x{margin-left:6px;opacity:.55;font-size:11px}.vchips button .x:hover{opacity:1;color:var(--red)}
 .vchips button.add{background:transparent;border:1px dashed var(--blue);color:var(--blue)}
 .vchips button:hover{background:var(--blue-tint);color:var(--blue2);box-shadow:none}.vchips button.on,.vchips button.on:hover{background:var(--blue);color:#fff;border-color:var(--blue)}
-.addrow2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
+.addrow2{display:grid;grid-template-columns:1fr 1fr 220px;gap:10px;margin-top:4px}
+.lcscbox{display:flex;gap:6px}.lcscbox input{min-width:0;text-transform:uppercase}.lcscbox button{white-space:nowrap;padding:0 12px}
+#lcscinfo{font-size:12.5px;margin-top:6px;color:var(--ink2);display:none;background:var(--surface2);border-radius:10px;padding:8px 10px}#lcscinfo.on{display:block}#lcscinfo.err{color:var(--red)}
+.xmenu{position:relative;display:inline-block}.xmenu summary{list-style:none;cursor:pointer}.xmenu summary::-webkit-details-marker{display:none}
+.xmenu>div{position:absolute;right:0;top:calc(100% + 4px);background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.12);padding:6px;z-index:20;min-width:240px}
+.xmenu>div a{display:block;padding:9px 12px;border-radius:8px;color:var(--ink);text-decoration:none;font-size:14px}.xmenu>div a:hover{background:var(--surface2)}
+.lc{font-size:11.5px;background:#fff3e0;color:#9a5b00;border-radius:6px;padding:1px 6px;text-decoration:none;font-family:ui-monospace,monospace}
+.onb{font-size:12px;text-decoration:none}
 .vend{font-size:12.5px;margin-top:2px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}.vend a{color:var(--blue)}.vend .nt{color:var(--ink2)}.addrow .f-btn button{min-height:42px;padding:0 26px}
 .stepper{display:flex;align-items:center;border:1px solid var(--line2);border-radius:var(--r);overflow:hidden;background:#fff}
 .stepper button{background:transparent;color:var(--blue);border:0;border-radius:0;min-height:40px;width:36px;padding:0;font-size:18px;justify-content:center;flex-shrink:0}.stepper button:hover{background:var(--blue-tint);box-shadow:none}
@@ -33,7 +40,9 @@ table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;bor
 </style>{% endblock %}
 {% block body %}
 <div class="ph"><div><h1>Parts list (BOM)</h1><div class="sub">{{items|length}} parts · every component of the product, grouped by type</div></div>
-<div class="actions"><span class="range" id="vtoggle" style="display:inline-flex;background:var(--surface2);border-radius:999px;padding:3px"><button type="button" data-v="simple" style="background:transparent;color:var(--ink2);padding:5px 14px;min-height:0;border:0;font-size:13px">Simple</button><button type="button" data-v="full" style="background:transparent;color:var(--ink2);padding:5px 14px;min-height:0;border:0;font-size:13px">Detailed</button></span><a class="btn sec" href="{{url_for('hw.designs')}}">Designs</a><a class="btn sec" href="{{url_for('hw.connections')}}">Connections</a><a class="btn sec" href="{{url_for('hardware_export')}}">Export Excel</a></div></div>
+<div class="actions"><span class="range" id="vtoggle" style="display:inline-flex;background:var(--surface2);border-radius:999px;padding:3px"><button type="button" data-v="simple" style="background:transparent;color:var(--ink2);padding:5px 14px;min-height:0;border:0;font-size:13px">Simple</button><button type="button" data-v="full" style="background:transparent;color:var(--ink2);padding:5px 14px;min-height:0;border:0;font-size:13px">Detailed</button></span><a class="btn sec" href="{{url_for('hw.designs')}}">Designs</a><a class="btn sec" href="{{url_for('hw.connections')}}">Connections</a><form method="post" enctype="multipart/form-data" id="impform" style="display:inline"><label class="btn sec" style="margin:0;cursor:pointer">⬆ Import BOM file<input type="file" name="csv" accept=".csv,.tsv,.txt,.xlsx,text/csv" style="display:none" onchange="this.form.submit()"></label></form>
+{% if has_lcsc %}<form method="post" action="{{url_for('hw.lcsc_refresh')}}" style="display:inline" onsubmit="this.querySelector('button').textContent='Updating…'"><button class="btn sec" title="Fetch latest LCSC price for every part with an LCSC code">↻ LCSC prices</button></form>{% endif %}
+<details class="xmenu"><summary class="btn sec">Export ▾</summary><div><a href="{{url_for('hardware_export')}}">📊 Excel (full BOM)</a><a href="{{url_for('hw.export_jlc')}}">🏭 JLCPCB assembly BOM (CSV)</a></div></details></div></div>
 
 <div class="vsimple">
 <form method="post" class="card addbox" id="add" autocomplete="off"><input type="hidden" name="simple" value="1">
@@ -50,14 +59,17 @@ table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;bor
   <div class="addrow2">
     <div><label>Where to buy <span class="muted" style="font-weight:400">— link or shop name</span></label><input name="supplier" placeholder="https://robu.in/…  or  Lamington Road – Shah Electronics" list="vendors"></div>
     <div><label>Note <span class="muted" style="font-weight:400">— local vendor phone, address, anything</span></label><input name="notes" placeholder="Rameshbhai 98xxxxxx10, shop no. 12, ₹40 if 10+"></div>
+    <div><label>LCSC code <span class="muted" style="font-weight:400">— fills the rest</span></label><div class="lcscbox"><input name="lcsc" id="lcsc" placeholder="C14663"><button type="button" class="sec" onclick="lcscLook()">Look up</button></div></div>
   </div>
+  <input type="hidden" name="datasheet" id="pds"><input type="hidden" name="part_no" id="ppn"><input type="hidden" name="package" id="ppkg">
+  <div id="lcscinfo"></div>
   <datalist id="vendors">{% for v in items|map(attribute='supplier')|select|unique %}<option value="{{v}}">{% endfor %}</datalist>
   <datalist id="commonparts">{% for c in COMMON_PARTS %}<option value="{{c}}">{% endfor %}</datalist>
   <div class="chips">{% for c in COMMON_PARTS[:14] %}<button type="button" class="chip2" onclick="pick('{{c}}')">{{c}}</button>{% endfor %}</div>
 </form>
 
 <div class="card tight"><table class="simple"><tr><th>Part</th><th>Size / value</th><th>Per board</th><th>In hand</th><th>Price</th><th>Status</th>{% if is_admin %}<th></th>{% endif %}</tr>
-{% for h in items %}<tr data-id="{{h.id}}"><td><a href="{{url_for('hardware_item',hid=h.id)}}" style="color:var(--ink);font-weight:500">{{h.name}}</a>{% if h.refs %} <span class="muted" style="font-family:ui-monospace,monospace;font-size:12px">{{h.refs}}</span>{% endif %}{% if h.datasheet %} <a href="{{h.datasheet}}" target="_blank">📄</a>{% endif %}
+{% for h in items %}<tr data-id="{{h.id}}"><td><a href="{{url_for('hardware_item',hid=h.id)}}" style="color:var(--ink);font-weight:500">{{h.name}}</a>{% if h.refs %} <span class="muted" style="font-family:ui-monospace,monospace;font-size:12px">{{h.refs}}</span>{% endif %}{% if h.datasheet %} <a href="{{h.datasheet}}" target="_blank">📄</a>{% endif %}{% if h.lcsc %} <a class="lc" href="https://www.lcsc.com/product-detail/{{h.lcsc}}.html" target="_blank" rel="noopener">{{h.lcsc}}</a>{% endif %}{% if ibom_design and h.refs %} <a class="onb" href="{{url_for('hw.design',did=ibom_design,ref=h.refs.split(',')[0])}}" title="Show on the board">📍</a>{% endif %}
 {% if h.supplier or h.notes %}<div class="vend">{% if h.supplier %}{% if h.supplier.startswith('http') %}<a href="{{h.supplier}}" target="_blank" rel="noopener">🛒 {{ h.supplier.split('/')[2].replace('www.','') }}</a>{% else %}<span>🏪 {{h.supplier}}</span>{% endif %}{% endif %}{% if h.notes %}<span class="nt">📝 {{h.notes}}</span>{% endif %}</div>{% endif %}</td>
 <td>{{h.value or ''}}{% if h.package %} <span class="muted">{{h.package}}</span>{% endif %}</td>
 <td>{{h.per_board or 1}}</td>
@@ -98,7 +110,7 @@ table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;bor
       <div><label>Datasheet link</label><input name="datasheet" placeholder="https://…"></div>
       <div><label>Photo</label><input type="file" name="photo" accept="image/*"></div>
     </div><label>Notes</label><input name="notes"><br><br><button>Add part</button></form>
-  <form method="post" enctype="multipart/form-data" class="pane"><label>CSV file (KiCad BOM export or any CSV with columns like name/value/footprint/refs/qty/cost/supplier)</label><input type="file" name="csv" accept=".csv,text/csv"><br><br><button>Import</button></form>
+  <form method="post" enctype="multipart/form-data" class="pane"><label>BOM file — straight from <b>KiCad</b> (Tools → Generate BOM, or Fabrication outputs → BOM), <b>EasyEDA</b> (Export → BOM), a <b>JLCPCB</b> BOM, or any CSV / Excel with columns like Reference, Value, Footprint, Qty, LCSC.</label><input type="file" name="csv" accept=".csv,.tsv,.txt,.xlsx,text/csv"><div class="muted" style="font-size:12.5px;margin-top:6px">Rows are grouped (R1, R4, R7 → one line ×3). Importing again after a board change updates the designators and counts of parts already in the list instead of adding duplicates.</div><br><br><button>Import</button></form>
 </div>
 
 {% if short %}<details class="flash"><summary style="cursor:pointer">🛒 <b>{{short|length}} parts still to buy</b> for {{boards}} board{{'s' if boards>1}} — tap to see the shopping list</summary>
@@ -142,6 +154,18 @@ const PRESETS={
  'enclosure box':{v:['IP65 150×100×70','IP65 200×120×75','IP65 100×68×50'],p:280,lb:'Size'},
  'screws m3':{v:['M3×6','M3×10','M3×12 + nuts','M3 nylon standoffs kit'],p:50,lb:'Size'},
  'capacitor (electrolytic)':{v:['10µF 25V','100µF 25V','470µF 16V','1000µF 16V'],p:4,lb:'Value'}};
+async function lcscLook(){const c=document.getElementById('lcsc').value.trim().toUpperCase(),box=document.getElementById('lcscinfo');if(!c)return;
+ box.className='on';box.textContent='Looking up '+c+'…';
+ let j;try{j=await (await fetch('/hardware/lcsc?code='+encodeURIComponent(c))).json();}catch(e){j={error:'Network error'};}
+ if(j.error){box.className='on err';box.innerHTML='';box.append(j.error+' ');if(j.url){const a=document.createElement('a');a.href=j.url;a.target='_blank';a.rel='noopener';a.textContent='Open on LCSC';box.append(a);}return;}
+ const f=document.getElementById('add'),set=(n,v)=>{const el=f.querySelector('[name='+n+']');if(el&&v&&!el.value)el.value=v;};
+ const nm=document.getElementById('pname');if(!nm.value)nm.value=j.name;
+ const pv=document.getElementById('pval');if(!pv.value&&j.desc)pv.value=j.desc.slice(0,60);
+ set('cost',j.price_inr);set('supplier','LCSC');document.getElementById('pds').value=j.datasheet||'';document.getElementById('ppn').value=j.name||'';document.getElementById('ppkg').value=j.package||'';
+ box.className='on';box.innerHTML='';const b=document.createElement('b');b.textContent=j.name;box.append(b,` · ${j.maker} · ${j.package} · ₹${j.price_inr} each ($${j.price_usd}) · ${j.stock.toLocaleString()} in stock `);
+ const a=document.createElement('a');a.href=j.url;a.target='_blank';a.rel='noopener';a.textContent='LCSC page';box.append(a);
+ if(j.ladder&&j.ladder.length>1){const s=document.createElement('div');s.className='muted';s.textContent='Bulk: '+j.ladder.map(x=>x.qty+'+ ₹'+x.inr).join(' · ');box.append(s);}}
+document.getElementById('lcsc')&&document.getElementById('lcsc').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();lcscLook();}});
 const CUSTOM={{ custom_vals|tojson }};
 function presetFor(name){const n=(name||'').toLowerCase().trim();const base=presetBase(n);const c=CUSTOM[n]||{saved:[],used:[]};
  if(!base&&!c.saved.length&&!c.used.length)return n?{v:[],p:0,lb:'Size / value',mine:[],onlyAdd:true}:null;

@@ -837,7 +837,11 @@ def doc_delete(did):
 @app.route("/uploads/<path:fn>")
 @login_required
 def uploaded(fn):
-    return send_from_directory(UPLOADS, fn)
+    resp = send_from_directory(UPLOADS, fn)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    if fn.lower().rsplit(".", 1)[-1] in ("html", "htm", "svg", "xml", "xhtml"):
+        resp.headers["Content-Security-Policy"] = "sandbox"          # uploaded pages can't touch the app
+    return resp
 
 # ------------------------------------------------------------- agreement ----
 @app.route("/agreement", methods=["GET", "POST"])
@@ -896,7 +900,7 @@ def parse_clauses(body):
     return sections
 
 # -------------------------------------------------------------- hardware ----
-HW_FIELDS = ["name", "part_no", "qty", "supplier", "cost", "status", "notes", "datasheet", "min_qty", "category", "value", "package", "refs", "per_board"]
+HW_FIELDS = ["name", "part_no", "qty", "supplier", "cost", "status", "notes", "datasheet", "min_qty", "category", "value", "package", "refs", "per_board", "lcsc"]
 
 @app.route("/hardware", methods=["GET", "POST"])
 @login_required
@@ -917,19 +921,18 @@ def hardware():
                           (pid(), q["name"], q["category"], q["value"], q["package"], q["refs"], q["per_board"], 0, "planned", session["user"], now())); n += 1
             log_activity("added parts", f"{n} via quick-add", "/hardware"); d.commit(); flash(f"{n} parts added")
             return redirect(url_for("hardware"))
-        if request.files.get("csv") and request.files["csv"].filename:   # CSV import (KiCad/any): header row with names
-            import csv, io
-            rdr = csv.DictReader(io.StringIO(request.files["csv"].read().decode("utf-8-sig", errors="ignore")))
-            n = 0
-            for row in rdr:
-                g = lambda *keys: next((row[k] for k in row if k and k.strip().lower().replace(" ", "_") in keys and row[k]), "")
-                name = g("name", "part", "description", "comment", "mpn") or g("value")
-                if not name: continue
-                d.execute("INSERT INTO hardware(project_id,name,category,value,package,refs,per_board,qty,cost,supplier,part_no,status,updated_by,ts) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                          (pid(), name, g("category") or "Other", g("value"), g("footprint", "package"), g("refs", "reference", "designator", "references"),
-                           int(float(g("qty_per_board", "quantity", "qty") or 1)), 0, float(g("cost", "price", "unit_price") or 0), g("supplier", "vendor"), g("part_no", "mpn", "sku"),
-                           "planned", session["user"], now())); n += 1
-            log_activity("imported BOM", f"{n} rows", "/hardware"); d.commit(); flash(f"Imported {n} parts")
+        if request.files.get("csv") and request.files["csv"].filename:   # BOM file import: KiCad / EasyEDA / JLCPCB / any CSV or Excel
+            from hw import import_bom
+            up = request.files["csv"]
+            try:
+                added, updated = import_bom(up.read(), up.filename, session["user"])
+            except Exception as ex:
+                flash(f"Could not read that file ({ex}). Export the BOM as CSV and try again."); return redirect(url_for("hardware"))
+            if not added and not updated:
+                flash("No parts found — the file needs a header row with columns like Reference/Designator, Value/Comment, Footprint.")
+            else:
+                log_activity("imported BOM", f"{up.filename}: {added} new, {updated} updated", "/hardware")
+                flash(f"Imported {up.filename}: {added} new part(s), {updated} updated")
             return redirect(url_for("hardware"))
         vals = [f.get(k, "") or (0 if k in ("qty", "min_qty") else 1 if k == "per_board" else "") for k in HW_FIELDS]
         if not f.get("category"):                         # simple form: guess category from the name
@@ -961,7 +964,13 @@ def hardware():
             designs_using.setdefault(x["hardware_id"], []).append((x["id"], x["title"]))
     except Exception: pass
     from hw import custom_values
-    return render_template("hardware.html", custom_vals=custom_values(), items=rows, bom_groups=groups, boards=boards, per_board_cost=per_board_cost,
+    ib = None
+    try:
+        ib = d.execute("SELECT v.design_id, v.id FROM design_versions v JOIN designs ds ON ds.id=v.design_id WHERE ds.project_id=? AND "
+                       "(LOWER(v.filename) LIKE '%.html' OR LOWER(v.filename) LIKE '%.htm') ORDER BY v.id DESC LIMIT 1", (pid(),)).fetchone()
+    except Exception: pass
+    return render_template("hardware.html", custom_vals=custom_values(), ibom_design=ib["design_id"] if ib else None,
+                           has_lcsc=any(r["lcsc"] for r in rows), items=rows, bom_groups=groups, boards=boards, per_board_cost=per_board_cost,
                            total=per_board_cost * boards, need=need, short=short, low=low, designs_using=designs_using)
 
 @app.route("/hardware/export")
@@ -969,7 +978,7 @@ def hardware():
 def hardware_export():
     """BOM export to Excel (falls back to CSV if openpyxl is missing)."""
     rows = db().execute("SELECT * FROM hardware WHERE project_id=? ORDER BY id", (pid(),)).fetchall()
-    cols = ["category", "refs", "name", "value", "package", "part_no", "per_board", "qty", "cost", "supplier", "status", "datasheet", "notes"]
+    cols = ["category", "refs", "name", "value", "package", "part_no", "lcsc", "per_board", "qty", "cost", "supplier", "status", "datasheet", "notes"]
     pname = db().execute("SELECT name FROM projects WHERE id=?", (pid(),)).fetchone()["name"]
     try:
         from openpyxl import Workbook
@@ -979,8 +988,8 @@ def hardware_export():
         for c in ws[1]: c.font = Font(bold=True)
         for r in rows:
             ws.append([r[c] for c in cols] + [(r["cost"] or 0) * (r["per_board"] or 1)])
-        ws.append([]); ws.append(["TOTAL"] + [""] * (len(cols) - 1) + [f"=SUM(N2:N{len(rows)+1})"])
-        for col, w in zip("ABCDEFGHIJKLMN", (22, 12, 28, 16, 10, 16, 8, 6, 10, 16, 12, 28, 28, 12)): ws.column_dimensions[col].width = w
+        ws.append([]); ws.append(["TOTAL"] + [""] * (len(cols) - 1) + [f"=SUM(O2:O{len(rows)+1})"])
+        for col, w in zip("ABCDEFGHIJKLMNO", (22, 12, 28, 16, 10, 16, 10, 8, 6, 10, 16, 12, 28, 28, 12)): ws.column_dimensions[col].width = w
         path = os.path.join(UPLOADS, f"BOM_{secure_filename(pname)}.xlsx"); wb.save(path)
         return send_from_directory(UPLOADS, os.path.basename(path), as_attachment=True)
     except ImportError:
