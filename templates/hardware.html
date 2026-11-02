@@ -12,7 +12,9 @@
 .addrow{display:grid;grid-template-columns:2.2fr 1.3fr 140px 1fr 1.1fr auto;gap:10px;align-items:end}
 .addrow label{margin-top:0}
 .vchips{display:none;gap:6px;flex-wrap:wrap;align-items:center;margin:2px 0 8px;padding:8px 10px;background:var(--blue-tint);border-radius:12px}.vchips.on{display:flex}
-.vchips .lb{font-size:12.5px;color:var(--blue2);margin-right:2px}.vchips button{background:#fff;color:var(--ink);border:1px solid var(--line2);border-radius:999px;padding:4px 11px;font-size:13px;min-height:0}.vchips button:hover{background:var(--blue-tint);color:var(--blue2);box-shadow:none}.vchips button.on,.vchips button.on:hover{background:var(--blue);color:#fff;border-color:var(--blue)}
+.vchips .lb{font-size:12.5px;color:var(--blue2);margin-right:2px}.vchips button{background:#fff;color:var(--ink);border:1px solid var(--line2);border-radius:999px;padding:4px 11px;font-size:13px;min-height:0}.vchips button.mine{border-style:dashed}.vchips button .x{margin-left:6px;opacity:.55;font-size:11px}.vchips button .x:hover{opacity:1;color:var(--red)}
+.vchips button.add{background:transparent;border:1px dashed var(--blue);color:var(--blue)}
+.vchips button:hover{background:var(--blue-tint);color:var(--blue2);box-shadow:none}.vchips button.on,.vchips button.on:hover{background:var(--blue);color:#fff;border-color:var(--blue)}
 .addrow2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
 .vend{font-size:12.5px;margin-top:2px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}.vend a{color:var(--blue)}.vend .nt{color:var(--ink2)}.addrow .f-btn button{min-height:42px;padding:0 26px}
 .stepper{display:flex;align-items:center;border:1px solid var(--line2);border-radius:var(--r);overflow:hidden;background:#fff}
@@ -140,19 +142,33 @@ const PRESETS={
  'enclosure box':{v:['IP65 150×100×70','IP65 200×120×75','IP65 100×68×50'],p:280,lb:'Size'},
  'screws m3':{v:['M3×6','M3×10','M3×12 + nuts','M3 nylon standoffs kit'],p:50,lb:'Size'},
  'capacitor (electrolytic)':{v:['10µF 25V','100µF 25V','470µF 16V','1000µF 16V'],p:4,lb:'Value'}};
-function presetFor(name){const n=(name||'').toLowerCase().trim();if(!n)return null;if(PRESETS[n])return PRESETS[n];
+const CUSTOM={{ custom_vals|tojson }};
+function presetFor(name){const n=(name||'').toLowerCase().trim();const base=presetBase(n);const c=CUSTOM[n]||{saved:[],used:[]};
+ if(!base&&!c.saved.length&&!c.used.length)return n?{v:[],p:0,lb:'Size / value',mine:[],onlyAdd:true}:null;
+ const b=base||{v:[],p:0,lb:'Size / value'};const mine=[...c.saved,...c.used.filter(x=>!b.v.includes(x))];
+ return {v:[...mine.filter(x=>!b.v.includes(x)),...b.v],p:b.p,lb:b.lb,mine,saved:c.saved};}
+function presetBase(name){const n=(name||'').toLowerCase().trim();if(!n)return null;if(PRESETS[n])return PRESETS[n];
  const k=Object.keys(PRESETS).find(k=>n.startsWith(k)||n.startsWith(k.split(' ')[0])&&k.split(' ')[0].length>3);return k?PRESETS[k]:null;}
 function showValues(name,fill){const pr=presetFor(name),box=document.getElementById('vchips'),val=document.getElementById('pval'),dl=document.getElementById('valuelist'),cost=document.querySelector('.addrow input[name=cost]');
  if(!pr){box.classList.remove('on');dl.innerHTML='';return;}
+ const key=(name||'').toLowerCase().trim();
  dl.innerHTML=pr.v.map(x=>`<option value="${x}">`).join('');
- box.innerHTML=`<span class="lb">${pr.lb}:</span>`+pr.v.map(x=>`<button type="button">${x}</button>`).join('');box.classList.add('on');
- box.querySelectorAll('button').forEach(b=>b.onclick=()=>{val.value=b.textContent;mark();});
- if(fill&&!val.value){val.value=pr.v[0];}if(fill&&!cost.value&&pr.p)cost.value=pr.p;mark();
- function mark(){box.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.textContent===val.value));}
+ box.innerHTML=`<span class="lb">${pr.lb}:</span>`;
+ pr.v.forEach(x=>{const btn=document.createElement('button');btn.type='button';btn.dataset.v=x;btn.textContent=x;
+   if((pr.saved||[]).includes(x)){btn.classList.add('mine');const xx=document.createElement('span');xx.className='x';xx.textContent='✕';xx.title='Remove this size';
+     xx.onclick=async e=>{e.stopPropagation();if(!confirm('Remove “'+x+'” from saved sizes?'))return;const r=await (await fetch('/hardware/values',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:key,value:x,remove:1})})).json();CUSTOM[key]=r.values;showValues(name,false);};btn.appendChild(xx);}
+   btn.onclick=()=>{val.value=x;mark();};box.appendChild(btn);});
+ const add=document.createElement('button');add.type='button';add.className='add';add.textContent='+ Add size';
+ add.onclick=async()=>{const v=(prompt('New size / value for “'+name+'”\n(e.g. 220µF 35V, 4 pin, 3 m)',val.value&&!pr.v.includes(val.value)?val.value:'')||'').trim();if(!v)return;
+   const r=await (await fetch('/hardware/values',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:key,value:v})})).json();CUSTOM[key]=r.values;val.value=v;showValues(name,false);};
+ box.appendChild(add);box.classList.add('on');
+ if(fill&&!val.value&&pr.v.length){val.value=pr.v[0];}if(fill&&!cost.value&&pr.p)cost.value=pr.p;mark();
+ function mark(){box.querySelectorAll('button[data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===val.value));}
  val.oninput=mark;}
 function pick(n){const i=document.getElementById('pname');i.value=n;document.getElementById('pval').value='';document.querySelector('.addrow input[name=cost]').value='';showValues(n,true);const v=document.getElementById('pval');v.focus();v.select();}
 document.getElementById('pname').addEventListener('change',e=>showValues(e.target.value,true));
-document.getElementById('pname').addEventListener('input',e=>{if(presetFor(e.target.value))showValues(e.target.value,false);else document.getElementById('vchips').classList.remove('on');});
+document.getElementById('pname').addEventListener('input',e=>{const pr=presetFor(e.target.value);if(pr&&!pr.onlyAdd)showValues(e.target.value,false);else document.getElementById('vchips').classList.remove('on');});
+document.getElementById('pname').addEventListener('blur',e=>{if(e.target.value.trim())showValues(e.target.value,false);});
 function step(b,d){const i=b.parentElement.querySelector('input');i.value=Math.max(1,(+i.value||1)+d);}
 async function adj(id,d){const r=await (await fetch('/hardware/'+id+'/quick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delta:d})})).json();const q=document.getElementById('q'+id);q.textContent=r.qty;q.classList.toggle('short',r.qty<+q.dataset.need);}
 async function setst(id,v){const r=await (await fetch('/hardware/'+id+'/quick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:v})})).json();const q=document.getElementById('q'+id);q.textContent=r.qty;q.classList.toggle('short',r.qty<+q.dataset.need);}

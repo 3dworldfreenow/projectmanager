@@ -212,6 +212,36 @@ def connections():
 
 
 # ------------------------------------------------------------ BOM helpers --
+def custom_values():
+    """{part name (lower): [values]} = sizes the team saved + sizes already used in the BOM."""
+    d = db(); out = {}
+    r = d.execute("SELECT value FROM meta WHERE key='bom_values'").fetchone()
+    saved = json.loads(r["value"]) if r else {}
+    for k, vs in saved.items():
+        out.setdefault(k, {"saved": [], "used": []})["saved"] = list(vs)
+    for row in d.execute("SELECT DISTINCT name, value FROM hardware WHERE value IS NOT NULL AND value!=''"):
+        k = (row["name"] or "").strip().lower()
+        if not k: continue
+        e = out.setdefault(k, {"saved": [], "used": []})
+        if row["value"] not in e["used"] and row["value"] not in e["saved"]: e["used"].append(row["value"])
+    return out
+
+@hw.route("/hardware/values", methods=["POST"])
+@login_required
+def save_value():
+    """Add or remove a custom size/value for a part name."""
+    j = request.get_json(); name = (j.get("name") or "").strip().lower(); val = (j.get("value") or "").strip()
+    if not name or not val: return jsonify(ok=False), 400
+    d = db(); r = d.execute("SELECT value FROM meta WHERE key='bom_values'").fetchone()
+    saved = json.loads(r["value"]) if r else {}
+    lst = saved.setdefault(name, [])
+    if j.get("remove"):
+        if val in lst: lst.remove(val)
+    elif val not in lst:
+        lst.append(val)
+    d.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('bom_values',?)", (json.dumps(saved),)); d.commit()
+    return jsonify(ok=True, values=custom_values().get(name, {}))
+
 @hw.route("/hardware/<int:hid>/quick", methods=["POST"])
 @login_required
 def part_quick(hid):

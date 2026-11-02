@@ -960,7 +960,8 @@ def hardware():
         for x in d.execute("SELECT DISTINCT p.hardware_id, ds.id, ds.title FROM design_pins p JOIN design_versions v ON v.id=p.version_id JOIN designs ds ON ds.id=v.design_id WHERE p.hardware_id IS NOT NULL"):
             designs_using.setdefault(x["hardware_id"], []).append((x["id"], x["title"]))
     except Exception: pass
-    return render_template("hardware.html", items=rows, bom_groups=groups, boards=boards, per_board_cost=per_board_cost,
+    from hw import custom_values
+    return render_template("hardware.html", custom_vals=custom_values(), items=rows, bom_groups=groups, boards=boards, per_board_cost=per_board_cost,
                            total=per_board_cost * boards, need=need, short=short, low=low, designs_using=designs_using)
 
 @app.route("/hardware/export")
