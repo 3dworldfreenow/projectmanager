@@ -557,7 +557,10 @@ def calendar_view():
     if sel:
         day_items = ev.get(sel, []) + [dict(kind="activity", text=f"{a['who']} {a['action']} {a['detail']}", link=a["link"])
                                        for a in d.execute("SELECT * FROM activity WHERE project_id=? AND ts LIKE ? ORDER BY id", (pid(), sel + "%"))]
-    return render_template("calendar.html", users=all_users(), y=y, m=m, weeks=weeks, ev=ev, act=act, msgs=msgs, first=first,
+    tday = datetime.date.today().isoformat(); tnow = datetime.datetime.now().strftime("%H:%M")
+    up = d.execute("SELECT * FROM meetings WHERE project_id=? AND (day>? OR (day=? AND IFNULL(time,'')>=?)) ORDER BY day, time LIMIT 10", (pid(), tday, tday, tnow)).fetchall()
+    past = d.execute("SELECT * FROM meetings WHERE project_id=? AND (day<? OR (day=? AND IFNULL(time,'')<?)) ORDER BY day DESC, time DESC LIMIT 5", (pid(), tday, tday, tnow)).fetchall()
+    return render_template("calendar.html", up_meets=up, past_meets=past, users=all_users(), y=y, m=m, weeks=weeks, ev=ev, act=act, msgs=msgs, first=first,
                            prev=prev, nxt=nxt, sel=sel, day_items=day_items, month_name=first.strftime("%B %Y"))
 
 

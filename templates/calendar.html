@@ -12,11 +12,22 @@
 .dots{margin-top:auto;display:flex;gap:6px;color:var(--muted);font-size:11px}
 .more{color:var(--muted);font-size:11px}
 .daypanel .it{display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px}.daypanel .it:last-child{border:0}
+.mlists{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.mi{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);text-decoration:none;color:var(--ink)}.mi:last-child{border:0}
+.mi .dt{flex-shrink:0;width:46px;text-align:center;border-radius:9px;background:#fde7f3;color:#a3236b;padding:4px 0;line-height:1.1}.mi .dt b{display:block;font-size:16px}.mi .dt small{font-size:10px;text-transform:uppercase}
+.mi.past .dt{background:var(--surface2);color:var(--muted)}.mi .t{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mi .s{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mlists h3{display:flex;justify-content:space-between;align-items:center}.mlists h3 a{font-size:12.5px;font-weight:500}
+@media(max-width:860px){.mlists{grid-template-columns:1fr}}
 @media(max-width:860px){.day{min-height:64px;padding:4px}.ev{display:none}.ev:first-of-type{display:block}.day .n{width:22px;height:22px}}
 </style>{% endblock %}
 {% block body %}
 <div class="ph"><div><h1>{{month_name}}</h1><div class="sub">meetings, due dates, milestones, firmware, tests and calls by day — click a day</div></div>
 <div class="actions"><button class="btn" type="button" onclick="openMeet('{{sel or today}}')">+ Meeting</button><a class="btn sec" href="{{url_for('pm.calendar_view',y=prev.year,m=prev.month)}}">‹ {{prev.strftime('%b')}}</a><a class="btn sec" href="{{url_for('pm.calendar_view')}}">Today</a><a class="btn sec" href="{{url_for('pm.calendar_view',y=nxt.year,m=nxt.month)}}">{{nxt.strftime('%b')}} ›</a></div></div>
+{% macro mrow(x, cls='') %}{% set dd=x.day.split('-') %}<a class="mi {{cls}}" href="{{url_for('pm.meeting',mid=x.id)}}"><div class="dt"><b>{{dd[2]}}</b><small>{{ ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dd[1]|int] }}</small></div><div style="min-width:0"><div class="t">{{x.title}}</div><div class="s">{{x.time or ''}}{% if x.with_whom %} · {{x.with_whom}}{% endif %}{% if x.place %} · {{x.place}}{% endif %}</div></div></a>{% endmacro %}
+<div class="mlists">
+ <div class="card"><h3>Next meetings <a href="{{url_for('pm.meetings')}}">all</a></h3>{% for x in up_meets %}{{mrow(x)}}{% else %}<div class="muted" style="padding:6px 0">No upcoming meetings. <a href="#" onclick="openMeet('{{today}}');return false">+ Plan one</a></div>{% endfor %}</div>
+ <div class="card"><h3>Last meetings <a href="{{url_for('pm.meetings')}}">all</a></h3>{% for x in past_meets %}{{mrow(x,'past')}}{% else %}<div class="muted" style="padding:6px 0">No past meetings yet.</div>{% endfor %}</div>
+</div>
 <div class="cal">
 {% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}<div class="dow">{{d}}</div>{% endfor %}
 {% for week in weeks %}{% for day in week %}{% set k=day.isoformat() %}{% set items=ev.get(k,[]) %}
