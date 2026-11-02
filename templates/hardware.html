@@ -9,6 +9,15 @@
 .part .meta{font-size:12.5px;color:var(--muted);margin-top:2px}.part .meta b{color:var(--ink2);font-weight:500}
 .part .right{text-align:right;font-size:13px;white-space:nowrap}.part .right .need{color:var(--muted);font-size:12px}
 .short{color:var(--red);font-weight:500}
+.addrow{display:grid;grid-template-columns:2.2fr 1.3fr 140px 1fr 1.1fr auto;gap:10px;align-items:end}
+.addrow label{margin-top:0}.addrow .f-btn button{min-height:42px;padding:0 26px}
+.stepper{display:flex;align-items:center;border:1px solid var(--line2);border-radius:var(--r);overflow:hidden;background:#fff}
+.stepper button{background:transparent;color:var(--blue);border:0;border-radius:0;min-height:40px;width:36px;padding:0;font-size:18px;justify-content:center;flex-shrink:0}.stepper button:hover{background:var(--blue-tint);box-shadow:none}
+.stepper input{border:0;text-align:center;padding:9px 0;min-width:0;width:100%;box-shadow:none!important}
+.stepper.sm{display:inline-flex;border-radius:999px}.stepper.sm button{min-height:28px;width:28px;font-size:15px}.stepper.sm .q{min-width:30px;text-align:center;font-variant-numeric:tabular-nums}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.chip2{background:var(--surface2);color:var(--ink2);border:0;border-radius:999px;padding:5px 12px;font-size:12.5px;min-height:0}.chip2:hover{background:var(--blue-tint);color:var(--blue);box-shadow:none}
+table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;border-radius:999px}
+@media(max-width:860px){.hide-m{display:none}.addrow{grid-template-columns:1fr 1fr}.addrow .f-name{grid-column:1/-1}.addrow .f-btn{grid-column:1/-1}.addrow .f-btn button{width:100%;justify-content:center}}
 .qa textarea{font-family:ui-monospace,Menlo,monospace;font-size:13px;min-height:84px}
 .tabs2{display:flex;gap:6px;margin-bottom:8px}.tabs2 button{background:var(--surface2);color:var(--ink2);border:0}.tabs2 button.on{background:var(--blue-soft);color:#001d35}
 .pane{display:none}.pane.on{display:block}
@@ -19,12 +28,30 @@
 <div class="actions"><span class="range" id="vtoggle" style="display:inline-flex;background:var(--surface2);border-radius:999px;padding:3px"><button type="button" data-v="simple" style="background:transparent;color:var(--ink2);padding:5px 14px;min-height:0;border:0;font-size:13px">Simple</button><button type="button" data-v="full" style="background:transparent;color:var(--ink2);padding:5px 14px;min-height:0;border:0;font-size:13px">Detailed</button></span><a class="btn sec" href="{{url_for('hw.designs')}}">Designs</a><a class="btn sec" href="{{url_for('hw.connections')}}">Connections</a><a class="btn sec" href="{{url_for('hardware_export')}}">Export Excel</a></div></div>
 
 <div class="vsimple">
-<div class="card tight"><table><tr><th>Part</th><th>Value</th><th>Qty/board</th><th>Have</th><th>Cost</th><th>Status</th><th>Supplier</th>{% if is_admin %}<th></th>{% endif %}</tr>
-{% for h in items %}<tr><td><a href="{{url_for('hardware_item',hid=h.id)}}" style="color:var(--ink);font-weight:500">{{h.name}}</a>{% if h.refs %} <span class="muted" style="font-family:ui-monospace,monospace;font-size:12px">{{h.refs}}</span>{% endif %}{% if h.datasheet %} <a href="{{h.datasheet}}" target="_blank">📄</a>{% endif %}</td>
-<td>{{h.value or ''}}{% if h.package %} <span class="muted">{{h.package}}</span>{% endif %}</td><td>{{h.per_board or 1}}</td><td class="{{ 'short' if (h.qty or 0) < need[h.id] }}">{{h.qty or 0}}</td><td>₹{{'%g'|format(h.cost or 0)}}</td>
-<td><span class="tag {{ 'ok' if h.status in ('tested','installed','received') else 'warn' if h.status=='ordered' else '' }}">{{h.status}}</span></td><td class="muted">{{h.supplier or ''}}</td>{% if is_admin %}<td>{% if is_admin %}<form method="post" action="/admin/delete/hardware/{{h.id}}" onsubmit="return confirm('Delete this part? This cannot be undone.')" style="display:inline"><button class="btn danger sm" title="Delete (admin)">🗑</button></form>{% endif %}</td>{% endif %}</tr>
-{% else %}<tr><td colspan="7"><div class="empty"><b>No parts yet</b>Switch to Detailed to add parts.</div></td></tr>{% endfor %}</table></div>
-<div class="row" style="margin-top:4px"><span class="muted">{{items|length}} parts · ₹{{'%.0f'|format(per_board_cost)}} per board · {{boards}} board{{'s' if boards>1}} · {{short|length}} still to buy</span><div style="flex:1"></div><button type="button" class="sec sm" onclick="setView('full')">+ Add parts / details</button></div>
+<form method="post" class="card addbox" id="add" autocomplete="off"><input type="hidden" name="simple" value="1">
+  <div class="row" style="margin-bottom:8px"><h3 style="flex:1">Add a part</h3><span class="muted hide-m">just the name is enough — fill the rest later</span></div>
+  <div class="addrow">
+    <div class="f-name"><label>Part name</label><input name="name" id="pname" required placeholder="e.g. Resistor, ESP32, Rain gauge" list="commonparts"></div>
+    <div class="f-val"><label>Size / value</label><input name="value" placeholder="10k · 100nF · 2 m"></div>
+    <div class="f-qty"><label>How many</label><div class="stepper"><button type="button" onclick="step(this,-1)">−</button><input name="per_board" type="number" min="1" value="1"><button type="button" onclick="step(this,1)">+</button></div></div>
+    <div class="f-cost"><label>Price ₹ (each)</label><input name="cost" type="number" step="0.01" min="0" placeholder="0"></div>
+    <div class="f-st"><label>Status</label><select name="status"><option value="planned">Need to buy</option><option value="ordered">Ordered</option><option value="received">Have it</option></select></div>
+    <div class="f-btn"><button>Add</button></div>
+  </div>
+  <datalist id="commonparts">{% for c in COMMON_PARTS %}<option value="{{c}}">{% endfor %}</datalist>
+  <div class="chips">{% for c in COMMON_PARTS[:14] %}<button type="button" class="chip2" onclick="pick('{{c}}')">{{c}}</button>{% endfor %}</div>
+</form>
+
+<div class="card tight"><table class="simple"><tr><th>Part</th><th>Size / value</th><th>Per board</th><th>In hand</th><th>Price</th><th>Status</th>{% if is_admin %}<th></th>{% endif %}</tr>
+{% for h in items %}<tr data-id="{{h.id}}"><td><a href="{{url_for('hardware_item',hid=h.id)}}" style="color:var(--ink);font-weight:500">{{h.name}}</a>{% if h.refs %} <span class="muted" style="font-family:ui-monospace,monospace;font-size:12px">{{h.refs}}</span>{% endif %}{% if h.datasheet %} <a href="{{h.datasheet}}" target="_blank">📄</a>{% endif %}</td>
+<td>{{h.value or ''}}{% if h.package %} <span class="muted">{{h.package}}</span>{% endif %}</td>
+<td>{{h.per_board or 1}}</td>
+<td><div class="stepper sm"><button type="button" onclick="adj({{h.id}},-1)">−</button><span class="q {{ 'short' if (h.qty or 0) < need[h.id] }}" id="q{{h.id}}" data-need="{{need[h.id]}}">{{h.qty or 0}}</span><button type="button" onclick="adj({{h.id}},1)">+</button></div></td>
+<td>₹{{'%g'|format(h.cost or 0)}}</td>
+<td><select class="st" onchange="setst({{h.id}},this.value)">{% for v,l in [('planned','Need to buy'),('ordered','Ordered'),('received','Have it'),('tested','Tested'),('installed','Installed')] %}<option value="{{v}}" {% if h.status==v %}selected{% endif %}>{{l}}</option>{% endfor %}{% if h.status not in ('planned','ordered','received','tested','installed') %}<option selected>{{h.status}}</option>{% endif %}</select></td>
+{% if is_admin %}<td><form method="post" action="/admin/delete/hardware/{{h.id}}" onsubmit="return confirm('Delete {{h.name}}?')"><button class="sec sm" style="padding:2px 9px;min-height:0" title="Delete">✕</button></form></td>{% endif %}</tr>
+{% else %}<tr><td colspan="7"><div class="empty"><b>No parts yet</b>Type a part name above and press Add.</div></td></tr>{% endfor %}</table></div>
+<div class="row" style="margin-top:4px"><span class="muted">{{items|length}} parts · ₹{{'%.0f'|format(per_board_cost)}} per board · building {{boards}} · {{short|length}} still to buy</span><div style="flex:1"></div><button type="button" class="sec sm" onclick="setView('full')">More options (bulk add, import, shopping list)</button></div>
 </div>
 <div class="vfull">
 <div class="sum">
@@ -76,8 +103,13 @@
 </div>
 {% endblock %}
 {% block scripts %}<script>
+function pick(n){const i=document.getElementById('pname');i.value=n;i.focus();const v=document.querySelector('.addrow input[name=value]');if(['Resistor','Capacitor','LED','Diode','Wire'].includes(n))v.focus();}
+function step(b,d){const i=b.parentElement.querySelector('input');i.value=Math.max(1,(+i.value||1)+d);}
+async function adj(id,d){const r=await (await fetch('/hardware/'+id+'/quick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delta:d})})).json();const q=document.getElementById('q'+id);q.textContent=r.qty;q.classList.toggle('short',r.qty<+q.dataset.need);}
+async function setst(id,v){const r=await (await fetch('/hardware/'+id+'/quick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:v})})).json();const q=document.getElementById('q'+id);q.textContent=r.qty;q.classList.toggle('short',r.qty<+q.dataset.need);}
+if(location.hash==='#add')setTimeout(()=>document.getElementById('pname').focus(),100);
 function setView(v){document.querySelector('.vsimple').style.display=v==='simple'?'':'none';document.querySelector('.vfull').style.display=v==='full'?'':'none';
  document.querySelectorAll('#vtoggle button').forEach(b=>{const on=b.dataset.v===v;b.style.background=on?'var(--surface)':'transparent';b.style.color=on?'var(--blue)':'var(--ink2)';b.style.boxShadow=on?'0 1px 2px rgba(60,64,67,.2)':'none';});try{localStorage.setItem('rf_bom_view',v);}catch(e){}}
 document.querySelectorAll('#vtoggle button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
-let v='simple';try{v=localStorage.getItem('rf_bom_view')||'simple';}catch(e){}{% if not items %}v='full';{% endif %}setView(v);
+let v='simple';try{v=localStorage.getItem('rf_bom_view')||'simple';}catch(e){}setView(v);
 function tab(i){document.querySelectorAll('.tabs2 button').forEach((b,j)=>b.classList.toggle('on',i===j));document.querySelectorAll('.pane').forEach((p,j)=>p.classList.toggle('on',i===j));}</script>{% endblock %}

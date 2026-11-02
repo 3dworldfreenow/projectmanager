@@ -70,7 +70,7 @@ TYPE_ICON = {k: ic for k, _, ic in TYPES}; TYPE_LABEL = {k: l for k, l, _ in TYP
 
 @hw.app_context_processor
 def inject():
-    return dict(HW_TYPES=TYPES, HW_STATUSES=STATUSES, HW_CATEGORIES=CATEGORIES, CAT_ICON=CAT_ICON, TYPE_ICON=TYPE_ICON, TYPE_LABEL=TYPE_LABEL)
+    return dict(HW_TYPES=TYPES, HW_STATUSES=STATUSES, HW_CATEGORIES=CATEGORIES, CAT_ICON=CAT_ICON, TYPE_ICON=TYPE_ICON, TYPE_LABEL=TYPE_LABEL, COMMON_PARTS=COMMON_PARTS)
 
 
 # ----------------------------------------------------------------- designs --
@@ -212,6 +212,45 @@ def connections():
 
 
 # ------------------------------------------------------------ BOM helpers --
+@hw.route("/hardware/<int:hid>/quick", methods=["POST"])
+@login_required
+def part_quick(hid):
+    """Inline edits from the simple table: +/- stock, status, qty per board, price."""
+    j = request.get_json(silent=True) or request.form
+    d = db(); r = d.execute("SELECT * FROM hardware WHERE id=?", (hid,)).fetchone() or abort(404)
+    if "delta" in j:
+        d.execute("UPDATE hardware SET qty=MAX(0, COALESCE(qty,0)+?) WHERE id=?", (int(j["delta"]), hid))
+    for k in ("status", "per_board", "cost", "qty"):
+        if k in j and j[k] != "":
+            d.execute(f"UPDATE hardware SET {k}=? WHERE id=?", (j[k], hid))
+    # "Have it" with nothing counted yet → assume we have what the build needs
+    if j.get("status") in ("received", "tested", "installed") and not (r["qty"] or 0):
+        boards = (d.execute("SELECT boards FROM projects WHERE id=?", (r["project_id"],)).fetchone() or {"boards": 1})["boards"] or 1
+        d.execute("UPDATE hardware SET qty=? WHERE id=?", ((r["per_board"] or 1) * boards, hid))
+    d.execute("UPDATE hardware SET updated_by=?, ts=? WHERE id=?", (session["user"], now(), hid)); d.commit()
+    r = d.execute("SELECT qty, status, per_board, cost FROM hardware WHERE id=?", (hid,)).fetchone()
+    return jsonify(ok=True, **dict(r))
+def guess_category(name):
+    """Pick a category from the part name so nobody has to choose one."""
+    n = (name or "").lower()
+    rules = [("Passive (R, C, L, diode)", ["resistor", "capacitor", "inductor", "diode", "led", "ohm", "kΩ", "nf", "uf", "µf", "pf"]),
+             ("MCU / module", ["esp32", "esp8266", "arduino", "raspberry", "pico", "stm32", "devkit", "nodemcu", "lora", "gsm", "sim800", "module"]),
+             ("Sensor", ["sensor", "bme", "bmp", "dht", "ds18b20", "gauge", "anemometer", "vane", "ldr", "uv", "pir", "soil", "gas", "mq-", "rain", "wind"]),
+             ("Connector / header", ["connector", "jst", "header", "terminal", "socket", "plug", "usb", "jack", "pin "]),
+             ("Wire & cable", ["wire", "cable", "awg", "jumper", "ribbon"]),
+             ("Power (battery, solar, regulator)", ["battery", "solar", "li-ion", "lipo", "18650", "charger", "tp4056", "regulator", "buck", "boost", "ldo", "adapter", "supply"]),
+             ("Semiconductor / IC", ["transistor", "mosfet", "ic ", "opamp", "relay", "2n2222", "bc547", "ne555", "74hc"]),
+             ("Mechanical / enclosure", ["box", "enclosure", "case", "pole", "bracket", "mount", "standoff", "gland", "shield", "pcb"]),
+             ("Fastener", ["screw", "nut", "bolt", "washer", "spacer"]),
+             ("Consumable", ["solder", "heat shrink", "heatshrink", "glue", "tape", "flux", "silicone sealant"])]
+    for cat, words in rules:
+        if any(w in n for w in words): return cat
+    return "Other"
+
+COMMON_PARTS = ["Resistor", "Capacitor", "LED", "Diode", "Transistor", "ESP32 DevKit", "BME280 sensor", "DHT22 sensor",
+                "Rain gauge", "Anemometer", "Solar panel", "18650 battery", "TP4056 charger", "Buck converter",
+                "JST connector", "Pin header", "Screw terminal", "Wire", "Enclosure box", "Screws M3", "Relay module"]
+
 def parse_quick(line):
     """Quick-add: 'R 10k 0603 x3 R1,R4,R7'  |  'C 100nF 50V 0805 x2 C1,C2'  |  'ESP32 DevKit x1'"""
     t = line.strip()

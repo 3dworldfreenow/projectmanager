@@ -932,13 +932,21 @@ def hardware():
             log_activity("imported BOM", f"{n} rows", "/hardware"); d.commit(); flash(f"Imported {n} parts")
             return redirect(url_for("hardware"))
         vals = [f.get(k, "") or (0 if k in ("qty", "min_qty") else 1 if k == "per_board" else "") for k in HW_FIELDS]
+        if not f.get("category"):                         # simple form: guess category from the name
+            from hw import guess_category
+            vals[HW_FIELDS.index("category")] = guess_category(f.get("name", "") + " " + f.get("value", ""))
+        if not f.get("status"): vals[HW_FIELDS.index("status")] = "planned"
+        if f.get("simple") and f.get("status") == "received" and not f.get("qty"):   # "Have it" → in hand = what one build needs
+            boards = (d.execute("SELECT boards FROM projects WHERE id=?", (pid(),)).fetchone() or {"boards": 1})["boards"] or 1
+            vals[HW_FIELDS.index("qty")] = int(f.get("per_board") or 1) * boards
         photo = None
         up = request.files.get("photo")
         if up and up.filename: photo, _ = save_upload(up)
         d.execute(f"INSERT INTO hardware(project_id,{','.join(HW_FIELDS)},photo,updated_by,ts) "
                   f"VALUES(?,{','.join('?'*len(HW_FIELDS))},?,?,?)", (pid(), *vals, photo, session["user"], now()))
         log_activity("added hardware", f["name"], "/hardware"); d.commit()
-        return redirect(url_for("hardware"))
+        if f.get("simple"): flash(f"Added: {f['name']}")
+        return redirect(url_for("hardware") + ("#add" if f.get("simple") else ""))
     rows = d.execute("SELECT * FROM hardware WHERE project_id=? ORDER BY category, name", (pid(),)).fetchall()
     boards = (d.execute("SELECT boards FROM projects WHERE id=?", (pid(),)).fetchone() or {"boards": 1})["boards"] or 1
     groups = {}
