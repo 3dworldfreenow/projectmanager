@@ -10,14 +10,18 @@
 .part .right{text-align:right;font-size:13px;white-space:nowrap}.part .right .need{color:var(--muted);font-size:12px}
 .short{color:var(--red);font-weight:500}
 .addrow{display:grid;grid-template-columns:2.2fr 1.3fr 140px 1fr 1.1fr auto;gap:10px;align-items:end}
-.addrow label{margin-top:0}.addrow .f-btn button{min-height:42px;padding:0 26px}
+.addrow label{margin-top:0}
+.addrow2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
+.vend{font-size:12.5px;margin-top:2px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}.vend a{color:var(--blue)}.vend .nt{color:var(--ink2)}.addrow .f-btn button{min-height:42px;padding:0 26px}
 .stepper{display:flex;align-items:center;border:1px solid var(--line2);border-radius:var(--r);overflow:hidden;background:#fff}
 .stepper button{background:transparent;color:var(--blue);border:0;border-radius:0;min-height:40px;width:36px;padding:0;font-size:18px;justify-content:center;flex-shrink:0}.stepper button:hover{background:var(--blue-tint);box-shadow:none}
 .stepper input{border:0;text-align:center;padding:9px 0;min-width:0;width:100%;box-shadow:none!important}
 .stepper.sm{display:inline-flex;border-radius:999px}.stepper.sm button{min-height:28px;width:28px;font-size:15px}.stepper.sm .q{min-width:30px;text-align:center;font-variant-numeric:tabular-nums}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.chip2{background:var(--surface2);color:var(--ink2);border:0;border-radius:999px;padding:5px 12px;font-size:12.5px;min-height:0}.chip2:hover{background:var(--blue-tint);color:var(--blue);box-shadow:none}
+table.simple td:nth-child(3),table.simple td:nth-child(4),table.simple td:nth-child(5),table.simple th{white-space:nowrap}
+table.simple td:first-child{min-width:220px}
 table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;border-radius:999px}
-@media(max-width:860px){.hide-m{display:none}.addrow{grid-template-columns:1fr 1fr}.addrow .f-name{grid-column:1/-1}.addrow .f-btn{grid-column:1/-1}.addrow .f-btn button{width:100%;justify-content:center}}
+@media(max-width:860px){.addrow2{grid-template-columns:1fr}.hide-m{display:none}.addrow{grid-template-columns:1fr 1fr}.addrow .f-name{grid-column:1/-1}.addrow .f-btn{grid-column:1/-1}.addrow .f-btn button{width:100%;justify-content:center}}
 .qa textarea{font-family:ui-monospace,Menlo,monospace;font-size:13px;min-height:84px}
 .tabs2{display:flex;gap:6px;margin-bottom:8px}.tabs2 button{background:var(--surface2);color:var(--ink2);border:0}.tabs2 button.on{background:var(--blue-soft);color:#001d35}
 .pane{display:none}.pane.on{display:block}
@@ -38,12 +42,18 @@ table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;bor
     <div class="f-st"><label>Status</label><select name="status"><option value="planned">Need to buy</option><option value="ordered">Ordered</option><option value="received">Have it</option></select></div>
     <div class="f-btn"><button>Add</button></div>
   </div>
+  <div class="addrow2">
+    <div><label>Where to buy <span class="muted" style="font-weight:400">— link or shop name</span></label><input name="supplier" placeholder="https://robu.in/…  or  Lamington Road – Shah Electronics" list="vendors"></div>
+    <div><label>Note <span class="muted" style="font-weight:400">— local vendor phone, address, anything</span></label><input name="notes" placeholder="Rameshbhai 98xxxxxx10, shop no. 12, ₹40 if 10+"></div>
+  </div>
+  <datalist id="vendors">{% for v in items|map(attribute='supplier')|select|unique %}<option value="{{v}}">{% endfor %}</datalist>
   <datalist id="commonparts">{% for c in COMMON_PARTS %}<option value="{{c}}">{% endfor %}</datalist>
   <div class="chips">{% for c in COMMON_PARTS[:14] %}<button type="button" class="chip2" onclick="pick('{{c}}')">{{c}}</button>{% endfor %}</div>
 </form>
 
 <div class="card tight"><table class="simple"><tr><th>Part</th><th>Size / value</th><th>Per board</th><th>In hand</th><th>Price</th><th>Status</th>{% if is_admin %}<th></th>{% endif %}</tr>
-{% for h in items %}<tr data-id="{{h.id}}"><td><a href="{{url_for('hardware_item',hid=h.id)}}" style="color:var(--ink);font-weight:500">{{h.name}}</a>{% if h.refs %} <span class="muted" style="font-family:ui-monospace,monospace;font-size:12px">{{h.refs}}</span>{% endif %}{% if h.datasheet %} <a href="{{h.datasheet}}" target="_blank">📄</a>{% endif %}</td>
+{% for h in items %}<tr data-id="{{h.id}}"><td><a href="{{url_for('hardware_item',hid=h.id)}}" style="color:var(--ink);font-weight:500">{{h.name}}</a>{% if h.refs %} <span class="muted" style="font-family:ui-monospace,monospace;font-size:12px">{{h.refs}}</span>{% endif %}{% if h.datasheet %} <a href="{{h.datasheet}}" target="_blank">📄</a>{% endif %}
+{% if h.supplier or h.notes %}<div class="vend">{% if h.supplier %}{% if h.supplier.startswith('http') %}<a href="{{h.supplier}}" target="_blank" rel="noopener">🛒 {{ h.supplier.split('/')[2].replace('www.','') }}</a>{% else %}<span>🏪 {{h.supplier}}</span>{% endif %}{% endif %}{% if h.notes %}<span class="nt">📝 {{h.notes}}</span>{% endif %}</div>{% endif %}</td>
 <td>{{h.value or ''}}{% if h.package %} <span class="muted">{{h.package}}</span>{% endif %}</td>
 <td>{{h.per_board or 1}}</td>
 <td><div class="stepper sm"><button type="button" onclick="adj({{h.id}},-1)">−</button><span class="q {{ 'short' if (h.qty or 0) < need[h.id] }}" id="q{{h.id}}" data-need="{{need[h.id]}}">{{h.qty or 0}}</span><button type="button" onclick="adj({{h.id}},1)">+</button></div></td>
