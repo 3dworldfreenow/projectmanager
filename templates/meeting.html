@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% block title %}{{m.title}} · Rainflow{% endblock %}
+{% block pagetitle %}Meeting{% endblock %}
+{% block head %}<style>
+.mf label{display:block;font-size:12.5px;color:var(--muted);margin:12px 0 4px}.mf input,.mf textarea{width:100%;box-sizing:border-box}
+.mf .r3{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.act{display:flex;gap:8px;align-items:flex-start;padding:6px 0;font-size:14px}.act .b{color:var(--teal,#0b7a6b);font-size:12px;white-space:nowrap;background:var(--teal-soft);border-radius:6px;padding:1px 6px}
+</style>{% endblock %}
+{% block body %}
+<div class="ph"><div><h1>👥 {{m.title}}</h1><div class="sub">{{m.day}} {{m.time or ''}}{% if m.with_whom %} · {{m.with_whom}}{% endif %}{% if m.place %} · {{m.place}}{% endif %} · added by {{m.created_by}}</div></div>
+<div class="actions"><a class="btn sec" href="{{url_for('pm.calendar_view',y=m.day[:4]|int,m=m.day[5:7]|int,d=m.day)}}">Calendar</a><a class="btn sec" href="{{url_for('pm.meetings')}}">All meetings</a>
+{% if is_admin %}<form method="post" action="/admin/delete/meetings/{{m.id}}" onsubmit="return confirm('Delete this meeting?')" style="display:inline"> <input type="hidden" name="next" value="/meetings"><button class="btn sec" style="color:var(--red)">Delete</button></form>{% endif %}</div></div>
+{% if m.actions %}<div class="card" style="margin-bottom:14px"><h3>Action items</h3>{% for l in m.actions.splitlines() if l.strip() %}<div class="act">{% if l.startswith('[task]') %}<span class="b">on board</span>{{l[6:]}}{% else %}<span>☐</span>{{l}}{% endif %}</div>{% endfor %}</div>{% endif %}
+<form class="card mf" method="post">
+  <h3>Edit</h3>
+  <label>Title</label><input name="title" value="{{m.title}}">
+  <div class="r3"><div><label>Date</label><input type="date" name="day" value="{{m.day}}"></div><div><label>Time</label><input type="time" name="time" value="{{m.time or ''}}"></div></div>
+  <label>With whom</label><input name="with_whom" value="{{m.with_whom or ''}}">
+  <label>Where</label><input name="place" value="{{m.place or ''}}">
+  <label>Notes</label><textarea name="notes" id="mnotes" rows="7">{{m.notes or ''}}</textarea><div id="mdict" style="margin-top:4px"></div>
+  <label>Action items (one per line, @name assigns, date = due)</label><textarea name="actions" rows="4">{{m.actions or ''}}</textarea>
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap"><button class="btn sec" name="make_tasks" value="1">Save + put new action items on board</button><button class="btn">Save</button></div>
+</form>
+<script>if(window.makeDictation)makeDictation(document.getElementById('mdict'),t=>{const a=document.getElementById('mnotes');a.value=(a.value.replace(/\s+$/,'')+(a.value?' ':'')+t).trimStart();});</script>
+{% endblock %}

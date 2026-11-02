@@ -1,0 +1,39 @@
+<style>
+.mback{position:fixed;inset:0;background:rgba(32,33,36,.45);z-index:300;display:none;align-items:flex-end;justify-content:center}
+.mback.on{display:flex}
+.msheet{background:var(--surface);width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom))}
+@media(min-width:700px){.mback{align-items:center}.msheet{border-radius:18px}}
+.msheet h3{margin:0 0 12px}.msheet label{display:block;font-size:12.5px;color:var(--muted);margin:10px 0 4px}
+.msheet input,.msheet textarea,.msheet select{width:100%;box-sizing:border-box}
+.msheet .r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.msheet .who{display:flex;flex-wrap:wrap;gap:6px}.msheet .who label{margin:0;display:flex;gap:5px;align-items:center;border:1px solid var(--line);border-radius:999px;padding:5px 10px;color:var(--ink);font-size:13px}
+.msheet .who input{width:auto}
+.msheet .places{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.msheet .places button{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;border-radius:999px;padding:4px 10px;font-size:12.5px;cursor:pointer}
+.msheet .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;position:sticky;bottom:-18px;background:var(--surface);padding:10px 0}
+</style>
+<div class="mback" id="meetback" onclick="if(event.target===this)closeMeet()">
+<form class="msheet" method="post" action="{{url_for('pm.meetings')}}">
+  <h3>👥 Add meeting</h3>
+  <input type="hidden" name="next" value="{{ request.full_path }}">
+  <label>What was it about?</label><input name="title" required placeholder="e.g. Weather station sensor review">
+  <div class="r2"><div><label>Date</label><input type="date" name="day" id="mday"></div><div><label>Time</label><input type="time" name="time" id="mtime"></div></div>
+  <label>With whom</label>
+  <div class="who">{% for u in users %}<label><input type="checkbox" class="mwho" value="{{u}}" {{'checked'}}> {{u}}</label>{% endfor %}</div>
+  <input name="with_whom" id="mwith" placeholder="+ others (vendor, client…)" style="margin-top:6px">
+  <label>Where</label><input name="place" id="mplace" placeholder="Office / phone / Google Meet link">
+  <div class="places">{% for p in ['In person','Phone call','Rainflow call','Google Meet','WhatsApp'] %}<button type="button" onclick="document.getElementById('mplace').value='{{p}}'">{{p}}</button>{% endfor %}</div>
+  <label>Notes — what was discussed / decided</label><textarea name="notes" id="mnotes" rows="4" placeholder="Decided to use BME280…"></textarea>
+  <div id="mdict" style="margin-top:4px"></div>
+  <label>Action items — one per line (@name to assign, a date for due)</label>
+  <textarea name="actions" rows="3" placeholder="Order 10 BME280 @{{users[1] if users|length>1 else 'name'}} 2026-11-10&#10;Send enclosure drawing"></textarea>
+  <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" name="make_tasks" value="1" style="width:auto" checked> Put action items on the task board</label>
+  <div class="foot"><button type="button" class="btn sec" onclick="closeMeet()">Cancel</button><button class="btn">Save meeting</button></div>
+</form></div>
+<script>
+function openMeet(day){const b=document.getElementById('meetback');document.getElementById('mday').value=day||new Date().toISOString().slice(0,10);
+ if(!document.getElementById('mtime').value){const n=new Date();document.getElementById('mtime').value=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
+ b.classList.add('on');b.querySelector('input[name=title]').focus();}
+function closeMeet(){document.getElementById('meetback').classList.remove('on');}
+document.querySelector('#meetback form').addEventListener('submit',()=>{const w=document.getElementById('mwith');const ppl=[...document.querySelectorAll('.mwho:checked')].map(x=>x.value);if(w.value.trim())ppl.push(w.value.trim());w.value=ppl.join(', ');});
+if(window.makeDictation)makeDictation(document.getElementById('mdict'),t=>{const a=document.getElementById('mnotes');a.value=(a.value.replace(/\s+$/,'')+(a.value?' ':'')+t).trimStart();});
+</script>

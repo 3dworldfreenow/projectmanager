@@ -1246,6 +1246,7 @@ def invoice(mid):
 
 # ---------------------------------------------------------- admin delete ----
 DELETABLE = {
+    "meetings":   ([("DELETE FROM meetings WHERE id=?", None)], None),
     # table: (extra cleanup statements with ? = id, files-column to unlink)
     "messages":   ([("UPDATE messages SET deleted=1, body='', filename=NULL, orig_name=NULL WHERE id=?", None)], None),
     "documents":  ([("DELETE FROM documents WHERE id=?", "filename")], None),

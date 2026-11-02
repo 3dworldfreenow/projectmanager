@@ -13,6 +13,9 @@ from flask import (Blueprint, g, render_template, request, redirect, url_for, se
 pm = Blueprint("pm", __name__)
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS meetings(
+  id INTEGER PRIMARY KEY, project_id INTEGER, title TEXT, day TEXT, time TEXT, with_whom TEXT,
+  place TEXT, notes TEXT, actions TEXT, created_by TEXT, ts TEXT);
 CREATE TABLE IF NOT EXISTS tasks(
   id INTEGER PRIMARY KEY, project_id INTEGER, title TEXT, description TEXT,
   type TEXT DEFAULT 'task', status TEXT DEFAULT 'todo', priority TEXT DEFAULT 'medium',
@@ -541,8 +544,10 @@ def calendar_view():
         add(x["ts"], "firmware", "firmware " + x["version"], "/firmware")
     for x in d.execute("SELECT * FROM tests WHERE project_id=? AND ts BETWEEN ? AND ?", (pid(), lo, hi + " 23:59")):
         add(x["ts"], "pass" if x["passed"] else "fail", ("✓ " if x["passed"] else "✗ ") + x["title"], "/tests")
+    for x in d.execute("SELECT * FROM meetings WHERE project_id=? AND day BETWEEN ? AND ? ORDER BY time", (pid(), lo, hi)):
+        add(x["day"], "meeting", ((x["time"] + " ") if x["time"] else "") + "👥 " + x["title"], f"/meetings/{x['id']}")
     for x in d.execute("SELECT * FROM calls WHERE project_id=? AND started BETWEEN ? AND ?", (pid(), lo, hi + " 23:59")):
-        add(x["started"], "call", f"call {x['caller']}→{x['callee']}", "/calls")
+        add(x["started"], "call", ("📹 meeting room by " + x["caller"]) if x["callee"] == "room" else f"call {x['caller']}→{x['callee']}", "/calls")
     act = {r["day"]: r["n"] for r in d.execute("SELECT substr(ts,1,10) day, COUNT(*) n FROM activity WHERE project_id=? AND ts BETWEEN ? AND ? GROUP BY day", (pid(), lo, hi + " 23:59"))}
     msgs = {r["day"]: r["n"] for r in d.execute("SELECT substr(ts,1,10) day, COUNT(*) n FROM messages WHERE project_id=? AND ts BETWEEN ? AND ? GROUP BY day", (pid(), lo, hi + " 23:59"))}
     weeks = _cal.Calendar(firstweekday=0).monthdatescalendar(y, m)
@@ -552,8 +557,67 @@ def calendar_view():
     if sel:
         day_items = ev.get(sel, []) + [dict(kind="activity", text=f"{a['who']} {a['action']} {a['detail']}", link=a["link"])
                                        for a in d.execute("SELECT * FROM activity WHERE project_id=? AND ts LIKE ? ORDER BY id", (pid(), sel + "%"))]
-    return render_template("calendar.html", y=y, m=m, weeks=weeks, ev=ev, act=act, msgs=msgs, first=first,
+    return render_template("calendar.html", users=all_users(), y=y, m=m, weeks=weeks, ev=ev, act=act, msgs=msgs, first=first,
                            prev=prev, nxt=nxt, sel=sel, day_items=day_items, month_name=first.strftime("%B %Y"))
+
+
+# ---------------------------------------------------------------- meetings --
+MEET_FIELDS = ("title", "day", "time", "with_whom", "place", "notes", "actions")
+
+@pm.route("/meetings", methods=["GET", "POST"])
+@login_required
+def meetings():
+    d = db()
+    if request.method == "POST":
+        f = request.form
+        vals = [f.get(k, "").strip() for k in MEET_FIELDS]
+        if not vals[0]: vals[0] = "Meeting"
+        if not vals[1]: vals[1] = datetime.date.today().isoformat()
+        cur = d.execute("INSERT INTO meetings(project_id,%s,created_by,ts) VALUES(?,%s,?,?)" % (",".join(MEET_FIELDS), ",".join("?" * len(MEET_FIELDS))),
+                        [pid()] + vals + [session["user"], now()])
+        d.commit(); mid = cur.lastrowid
+        log_activity("added a meeting", f"{vals[0]} ({vals[1]})", f"/meetings/{mid}")
+        notify([u for u in all_users()], f"{session['user']} added a meeting: {vals[0]} on {vals[1]} {vals[2]}".strip(), f"/meetings/{mid}")
+        if f.get("make_tasks"): _actions_to_tasks(mid)
+        return redirect(f.get("next") or url_for("pm.meeting", mid=mid))
+    today = datetime.date.today().isoformat()
+    rows = d.execute("SELECT * FROM meetings WHERE project_id=? ORDER BY day DESC, time DESC", (pid(),)).fetchall()
+    return render_template("meetings.html", upcoming=[r for r in rows if r["day"] >= today][::-1],
+                           past=[r for r in rows if r["day"] < today], users=all_users(), today=today)
+
+def _actions_to_tasks(mid):
+    """Each line in 'action items' becomes a task (\"@user\" assigns, \"by 2026-11-10\" sets due)."""
+    import re as _re
+    d = db(); m = d.execute("SELECT * FROM meetings WHERE id=?", (mid,)).fetchone(); n = 0
+    users = all_users()
+    for line in (m["actions"] or "").splitlines():
+        line = line.strip(" -•*\t☐✓")
+        if not line or line.startswith("[task]"): continue
+        who = next((u for u in users if "@" + u.lower() in line.lower()), None)
+        due = _re.search(r"\d{4}-\d{2}-\d{2}", line)
+        title = _re.sub(r"@\w+|\bby\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}", "", line).strip(" ,-") or line
+        d.execute("INSERT INTO tasks(project_id,title,description,assignee,due,created_by,ts) VALUES(?,?,?,?,?,?,?)",
+                  (pid(), title, f"From meeting: {m['title']} ({m['day']})\n/meetings/{mid}", who, due.group(0) if due else None, session["user"], now()))
+        if who: notify([who], f"New task from meeting: {title}", "/board")
+        n += 1
+    if n:
+        d.execute("UPDATE meetings SET actions=? WHERE id=?", ("\n".join(("[task] " + l.strip()) if l.strip() and not l.strip().startswith("[task]") else l for l in (m["actions"] or "").splitlines()), mid))
+    d.commit(); return n
+
+@pm.route("/meetings/<int:mid>", methods=["GET", "POST"])
+@login_required
+def meeting(mid):
+    d = db(); m = d.execute("SELECT * FROM meetings WHERE id=? AND project_id=?", (mid, pid())).fetchone()
+    if not m: abort(404)
+    if request.method == "POST":
+        f = request.form
+        d.execute("UPDATE meetings SET %s WHERE id=?" % ",".join(k + "=?" for k in MEET_FIELDS), [f.get(k, "").strip() for k in MEET_FIELDS] + [mid])
+        d.commit(); log_activity("updated meeting notes", f.get("title", ""), f"/meetings/{mid}")
+        if f.get("make_tasks"):
+            n = _actions_to_tasks(mid); flash(f"{n} task(s) created on the board")
+        else: flash("Saved")
+        return redirect(url_for("pm.meeting", mid=mid))
+    return render_template("meeting.html", m=m, users=all_users())
 
 
 # ----------------------------------------------------------- notifications --
