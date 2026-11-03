@@ -33,6 +33,7 @@
 function openMeet(day){const b=document.getElementById('meetback');document.getElementById('mday').value=day||new Date().toISOString().slice(0,10);
  if(!document.getElementById('mtime').value){const n=new Date();document.getElementById('mtime').value=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
  b.classList.add('on');b.querySelector('input[name=title]').focus();}
+document.querySelector('#meetback form').addEventListener('draftrestored',()=>document.getElementById('meetback').classList.add('on'));
 function closeMeet(){document.getElementById('meetback').classList.remove('on');}
 document.querySelector('#meetback form').addEventListener('submit',()=>{const w=document.getElementById('mwith');const ppl=[...document.querySelectorAll('.mwho:checked')].map(x=>x.value);if(w.value.trim())ppl.push(w.value.trim());w.value=ppl.join(', ');});
 if(window.makeDictation)makeDictation(document.getElementById('mdict'),t=>{const a=document.getElementById('mnotes');a.value=(a.value.replace(/\s+$/,'')+(a.value?' ':'')+t).trimStart();});

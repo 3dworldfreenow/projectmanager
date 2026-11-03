@@ -85,7 +85,7 @@ body.incall .topbar{display:none!important}
   <div class="t">{% if m.pinned %}📌 {% endif %}{% if m.edited %}<span class="ed" onclick="showHistory({{m.id}},this)">edited</span> {% endif %}{% if not m.deleted %}<span class="act"><span onclick="replyTo({{m.id}})">↩ reply</span><span onclick="act({{m.id}},'pin')">📌 pin</span>{% if m.sender==user %}{% if m.body %}<span onclick="editMsg({{m.id}})">✎ edit</span>{% endif %}{% endif %}{% if m.sender==user or is_admin %}<span onclick="act({{m.id}},'delete')">🗑</span>{% endif %}</span>{% endif %} {{m.ts[-5:]}}</div></div>{% endfor %}
 </div>
 <div class="replybar" id="replybar"><span>↩ Replying to <b id="replyWho"></b>: <span id="replyTxt"></span></span><div style="flex:1"></div><span style="cursor:pointer" onclick="cancelReply()">✕</span></div>
-<form id="f" class="compose">
+<form id="f" class="compose" data-draft="chat">
   <label class="ib sec" style="margin:0;cursor:pointer" title="Attach file / image / code">📎<input type="file" id="file" style="display:none"></label>
   <input type="text" id="body" placeholder="Message (use @name to mention)" autocomplete="off" list="members">
   <datalist id="members">{% for u in members %}<option value="@{{u}} ">{% endfor %}</datalist>
@@ -111,7 +111,7 @@ $('body').addEventListener('focus',()=>setTimeout(()=>{log.scrollTop=log.scrollH
 // ---------------- chat ----------------
 let replyId=null,quotes={};
 function fmtBody(el,txt){el.innerHTML='';txt.split(/(@\w+)/g).forEach(p=>{if(/^@\w+$/.test(p)){const s=document.createElement('span');s.className='mention';s.textContent=p;el.appendChild(s);}else el.append(p);});}
-function render(m,prepend){const d=document.createElement('div');d.className='msg'+(m.sender===me?' me':'')+(m.deleted?' del':'')+((m.body||'').includes('@'+me)?' mentioned':'');d.dataset.id=m.id;d.dataset.sender=m.sender;
+function render(m,prepend){if(document.querySelector(`.msg[data-id="${m.id}"]`))return;const d=document.createElement('div');d.className='msg'+(m.sender===me?' me':'')+(m.deleted?' del':'')+((m.body||'').includes('@'+me)?' mentioned':'');d.dataset.id=m.id;d.dataset.sender=m.sender;
  const w=document.createElement('div');w.className='who c'+(m.sender.length%5+1);w.textContent=m.sender;d.appendChild(w);
  if(m.reply_to&&quotes[m.reply_to]){const q=quotes[m.reply_to];const qd=document.createElement('div');qd.className='quote';qd.onclick=()=>jump(m.reply_to);qd.innerHTML='<b></b>';qd.firstChild.textContent=q.sender;qd.append((q.body||q.orig_name||'').slice(0,80));d.appendChild(qd);}
  if(m.deleted){const t=document.createElement('div');t.className='b';t.textContent='🚫 message deleted';d.appendChild(t);}
@@ -148,18 +148,26 @@ function applyEdited(id,n){const t=document.querySelector(`.msg[data-id="${id}"]
 async function showHistory(id,el){const d=document.querySelector(`.msg[data-id="${id}"]`);let h=d.querySelector('.hist');if(h){h.remove();return;}
  const rows=await (await fetch(`/chat/${id}/history`)).json();h=document.createElement('div');h.className='hist';
  h.innerHTML='<b>Previous versions</b>';rows.forEach(r=>{const p=document.createElement('div');p.textContent=`${r.ts.slice(-5)} — ${r.body}`;h.appendChild(p);});d.insertBefore(h,d.querySelector('.t'));}
-async function poll(){try{const r=await fetch('/chat/poll?after='+lastId);const j=await r.json();Object.assign(quotes,j.quotes||{});j.new.forEach(m=>{render(m);lastId=m.id;});
+let polling=false;
+async function poll(){if(polling)return;polling=true;try{const r=await fetch('/chat/poll?after='+lastId);const j=await r.json();Object.assign(quotes,j.quotes||{});j.new.forEach(m=>{render(m);lastId=m.id;});
  j.edited.forEach(e=>{const d=document.querySelector(`.msg[data-id="${e.id}"]`);if(!d)return;const b=d.querySelector('.b');
   if(e.deleted&&!d.classList.contains('del')){location.reload();return;}
-  if(b&&e.body&&b.textContent!==e.body&&!$('q').value&&!e.deleted){fmtBody(b,e.body);applyEdited(e.id);}});}catch(e){}}
+  if(b&&e.body&&b.textContent!==e.body&&!$('q').value&&!e.deleted){fmtBody(b,e.body);applyEdited(e.id);}});}catch(e){}finally{polling=false;}}
 {% if not q %}setInterval(poll,1500);{% endif %}
 const fileIn=$('file'),pend=$('pending');
 $('dictBtn').onclick=()=>{const b=$('dictbar');const show=b.style.display==='none';b.style.display=show?'flex':'none';if(show&&!b.dataset.init){b.dataset.init=1;makeDictation($('dict'),t=>{const i=$('body');i.value=(i.value?i.value+' ':'')+t;i.focus();});}};
 fileIn.onchange=()=>{pend.textContent=fileIn.files[0]?'📎 '+fileIn.files[0].name:'';};
+let sending=false;
 $('f').onsubmit=async e=>{e.preventDefault();const b=$('body');
+ if(sending)return;                                   // one send at a time — no double messages
  if(!b.value.trim()&&!fileIn.files[0])return;
- const fd=new FormData();fd.append('body',b.value);if(fileIn.files[0])fd.append('file',fileIn.files[0]);if(replyId)fd.append('reply_to',replyId);
- await fetch('/chat/send',{method:'POST',body:fd});fileIn.value='';pend.textContent='';b.value='';cancelReply();poll();};
+ sending=true;const btn=$('f').querySelector('button:not([type=button])');if(btn)btn.disabled=true;
+ const text=b.value,file=fileIn.files[0],rep=replyId,cid=(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random());
+ const fd=new FormData();fd.append('body',text);fd.append('cid',cid);if(file)fd.append('file',file);if(rep)fd.append('reply_to',rep);
+ b.value='';fileIn.value='';pend.textContent='';cancelReply();
+ let ok=false;for(let i=0;i<3&&!ok;i++){try{const r=await fetch('/chat/send',{method:'POST',body:fd});ok=r.ok;}catch(_){await new Promise(r=>setTimeout(r,800));}}
+ if(!ok){if(!b.value)b.value=text;if(window.toast)toast('Not sent — check your connection and tap send again');}
+ sending=false;if(btn)btn.disabled=false;b.focus();poll();};
 // ---------------- lazy load older messages on scroll-up ----------------
 async function loadOlder(){if(!hasOlder||loadingOlder)return;loadingOlder=true;const first=document.querySelector('.msg');if(!first){loadingOlder=false;return;}
  const r=await fetch('/chat/older?before='+first.dataset.id);const j=await r.json();Object.assign(quotes,j.quotes||{});

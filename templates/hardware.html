@@ -36,6 +36,11 @@ table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;bor
 .qa textarea{font-family:ui-monospace,Menlo,monospace;font-size:13px;min-height:84px}
 .tabs2{display:flex;gap:6px;margin-bottom:8px}.tabs2 button{background:var(--surface2);color:var(--ink2);border:0}.tabs2 button.on{background:var(--blue-soft);color:#001d35}
 .pane{display:none}.pane.on{display:block}
+table.simple .ck{width:30px;padding-right:0}table.simple .ck input{width:17px;height:17px;margin:0;cursor:pointer}
+.rowact{white-space:nowrap}.rowact button{padding:2px 9px;min-height:0;margin-left:3px}.rowact .del:hover,.selbar .del:hover{color:var(--red);border-color:var(--red)}
+.selbar{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom));z-index:30;display:none;align-items:center;gap:8px;flex-wrap:wrap;background:#1f1f1f;color:#fff;border-radius:14px;padding:10px 14px;margin-top:10px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.selbar.on{display:flex}.selbar b{flex:1;font-weight:500}.selbar button{background:#2d2d2d;color:#fff;border-color:#444}
+body.has-tabs .selbar{bottom:calc(72px + env(safe-area-inset-bottom))}
 .l1{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 10px}.l1 .lv{font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--muted);background:var(--surface2);border-radius:5px;padding:2px 6px}
 .mtabs{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;margin-bottom:4px;scrollbar-width:none}.mtabs::-webkit-scrollbar{display:none}
 .mtabs a,.mtabs button{flex-shrink:0;display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;background:var(--surface);border:1px solid var(--line2);color:var(--ink2);font-size:13.5px;text-decoration:none;min-height:0;font-weight:500}
@@ -113,8 +118,8 @@ table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;bor
   <div class="chips">{% for c in COMMON_PARTS[:14] %}<button type="button" class="chip2" onclick="pick('{{c}}')">{{c}}</button>{% endfor %}</div>
 </form>
 
-<div class="card tight"><table class="simple"><tr><th>Part</th><th>Size / value</th><th>{{ 'In this module' if cur_mod else 'Per product' }}</th><th>In hand</th><th>Price</th><th>Status</th>{% if is_admin %}<th></th>{% endif %}</tr>
-{% for h in items %}{% set hrefs = (h.mod_refs if cur_mod else h.refs) or '' %}{% set u = uses.get(h.id, []) %}<tr data-id="{{h.id}}"><td><a href="{{url_for('hardware_item',hid=h.id)}}" style="color:var(--ink);font-weight:500">{{h.name}}</a>{% if u|length > 1 %}<span class="shared" title="Used in {{ u|map(attribute=1)|join(', ') }}">shared ×{{u|length}}</span>{% endif %}{% if hrefs and (cur_mod or u|length < 2) %} <span class="muted" style="font-family:ui-monospace,monospace;font-size:12px">{{hrefs}}</span>{% endif %}{% if h.datasheet %} <a href="{{h.datasheet}}" target="_blank">📄</a>{% endif %}{% if h.lcsc %} <a class="lc" href="https://www.lcsc.com/product-detail/{{h.lcsc}}.html" target="_blank" rel="noopener">{{h.lcsc}}</a>{% endif %}{% if ibom_design and hrefs and ':' not in hrefs %} <a class="onb" href="{{url_for('hw.design',did=ibom_design,ref=hrefs.split(',')[0])}}" title="Show on the board">📍</a>{% endif %}
+<div class="card tight"><table class="simple"><tr><th class="ck"><input type="checkbox" id="ckall" title="Select all"></th><th>Part</th><th>Size / value</th><th>{{ 'In this module' if cur_mod else 'Per product' }}</th><th>In hand</th><th>Price</th><th>Status</th><th></th></tr>
+{% for h in items %}{% set hrefs = (h.mod_refs if cur_mod else h.refs) or '' %}{% set u = uses.get(h.id, []) %}<tr data-id="{{h.id}}"><td class="ck"><input type="checkbox" class="pk" value="{{h.id}}" data-name="{{h.name}}{% if h.value %} {{h.value}}{% endif %}" data-uses="{{ u|map(attribute=1)|join(', ') }}"></td><td><a href="{{url_for('hardware_item',hid=h.id)}}" style="color:var(--ink);font-weight:500">{{h.name}}</a>{% if u|length > 1 %}<span class="shared" title="Used in {{ u|map(attribute=1)|join(', ') }}">shared ×{{u|length}}</span>{% endif %}{% if hrefs and (cur_mod or u|length < 2) %} <span class="muted" style="font-family:ui-monospace,monospace;font-size:12px">{{hrefs}}</span>{% endif %}{% if h.datasheet %} <a href="{{h.datasheet}}" target="_blank">📄</a>{% endif %}{% if h.lcsc %} <a class="lc" href="https://www.lcsc.com/product-detail/{{h.lcsc}}.html" target="_blank" rel="noopener">{{h.lcsc}}</a>{% endif %}{% if ibom_design and hrefs and ':' not in hrefs %} <a class="onb" href="{{url_for('hw.design',did=ibom_design,ref=hrefs.split(',')[0])}}" title="Show on the board">📍</a>{% endif %}
 {% if not cur_mod and u %}<div class="uses">{% for mid,mn,mq,mr in u %}<a href="{{url_for('hardware',m=mid)}}" title="{{mr}}">{{mn}} ×{{mq}}</a>{% endfor %}</div>{% endif %}
 {% if h.supplier or h.notes %}<div class="vend">{% if h.supplier %}{% if h.supplier.startswith('http') %}<a href="{{h.supplier}}" target="_blank" rel="noopener">🛒 {{ h.supplier.split('/')[2].replace('www.','') }}</a>{% else %}<span>🏪 {{h.supplier}}</span>{% endif %}{% endif %}{% if h.notes %}<span class="nt">📝 {{h.notes}}</span>{% endif %}</div>{% endif %}</td>
 <td>{{h.value or ''}}{% if h.package %} <span class="muted">{{h.package}}</span>{% endif %}</td>
@@ -122,8 +127,10 @@ table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;bor
 <td><div class="stepper sm"><button type="button" onclick="adj({{h.id}},-1)">−</button><span class="q {{ 'short' if (h.qty or 0) < need[h.id] }}" id="q{{h.id}}" data-need="{{need[h.id]}}">{{h.qty or 0}}</span><button type="button" onclick="adj({{h.id}},1)">+</button></div></td>
 <td>₹{{'%g'|format(h.cost or 0)}}</td>
 <td><select class="st" onchange="setst({{h.id}},this.value)">{% for v,l in [('planned','Need to buy'),('ordered','Ordered'),('received','Have it'),('tested','Tested'),('installed','Installed')] %}<option value="{{v}}" {% if h.status==v %}selected{% endif %}>{{l}}</option>{% endfor %}{% if h.status not in ('planned','ordered','received','tested','installed') %}<option selected>{{h.status}}</option>{% endif %}</select></td>
-{% if is_admin %}<td><form method="post" action="/admin/delete/hardware/{{h.id}}" onsubmit="return confirm('Delete {{h.name}}?')"><button class="sec sm" style="padding:2px 9px;min-height:0" title="Delete">✕</button></form></td>{% endif %}</tr>
-{% else %}<tr><td colspan="7"><div class="empty"><b>No parts yet</b>Type a part name above and press Add.</div></td></tr>{% endfor %}</table></div>
+<td class="rowact">{% if cur_mod %}<button type="button" class="sec sm" title="Remove from {{cur_mod.name}} (stays in the library)" onclick="partsAct('remove',[{{h.id}}])">✕</button>{% endif %}<button type="button" class="sec sm del" title="Delete this part{% if u|length > 1 %} from all {{u|length}} modules{% endif %}" onclick="partsAct('delete',[{{h.id}}])">🗑</button></td></tr>
+{% else %}<tr><td colspan="8"><div class="empty"><b>No parts yet</b>Type a part name above and press Add.</div></td></tr>{% endfor %}</table></div>
+<div class="selbar" id="selbar"><b id="selcount">0 selected</b>{% if cur_mod %}<button type="button" class="sec sm" onclick="partsAct('remove')">Remove from {{cur_mod.name}}</button>{% endif %}<button type="button" class="sec sm del" onclick="partsAct('delete')">🗑 Delete from library</button><button type="button" class="sec sm" onclick="selClear()">Cancel</button></div>
+<form method="post" action="{{url_for('hw.parts_delete')}}" id="delform" data-nodraft style="display:none"><input type="hidden" name="next" value="{{request.full_path}}">{% if cur_mod %}<input type="hidden" name="module" value="{{cur_mod.id}}" disabled id="delmod">{% endif %}</form>
 <div class="row" style="margin-top:4px"><span class="muted">{{items|length}} parts · ₹{{'%.0f'|format(per_board_cost)}} per product · building {{boards}} · {{short|length}} still to buy</span><div style="flex:1"></div><button type="button" class="sec sm" onclick="setView('full')">More options (bulk add, import, shopping list)</button></div>
 </div>
 <div class="vfull">
@@ -242,6 +249,20 @@ document.getElementById('pname').addEventListener('input',e=>{const pr=presetFor
 document.getElementById('pname').addEventListener('blur',e=>{if(e.target.value.trim())showValues(e.target.value,false);});
 function step(b,d){const i=b.parentElement.querySelector('input');i.value=Math.max(1,(+i.value||1)+d);}
 (function(){const a=document.querySelector('.mtabs a.on');if(a&&a.scrollIntoView)a.scrollIntoView({block:'nearest',inline:'center'});})();
+function selIds(){return [...document.querySelectorAll('.pk:checked')].map(x=>+x.value);}
+function selUpd(){const n=selIds().length;document.getElementById('selcount').textContent=n+' selected';document.getElementById('selbar').classList.toggle('on',n>0);
+ const all=document.querySelectorAll('.pk');document.getElementById('ckall').checked=n&&n===all.length;}
+function selClear(){document.querySelectorAll('.pk,#ckall').forEach(x=>x.checked=false);selUpd();}
+document.querySelectorAll('.pk').forEach(x=>x.addEventListener('change',selUpd));
+document.getElementById('ckall')&&document.getElementById('ckall').addEventListener('change',e=>{document.querySelectorAll('.pk').forEach(x=>x.checked=e.target.checked);selUpd();});
+function partsAct(kind,ids){ids=ids||selIds();if(!ids.length)return;
+ const boxes=ids.map(i=>document.querySelector('.pk[value="'+i+'"]')).filter(Boolean);const names=boxes.map(b=>b.dataset.name);
+ let msg;if(kind==='remove'){msg='Remove from '+{{ (cur_mod.name if cur_mod else '')|tojson }}+'?\n\n'+names.join('\n')+'\n\nThe part'+(ids.length>1?'s stay':' stays')+' in the library and in other modules.';}
+ else{const shared=boxes.filter(b=>b.dataset.uses.includes(',')).map(b=>b.dataset.name+'  (used in '+b.dataset.uses+')');
+  msg='Delete '+(ids.length>1?ids.length+' parts':'“'+names[0]+'”')+' from the parts library?\n\n'+(ids.length>1?names.join('\n')+'\n\n':'')+(shared.length?'⚠ Shared — this removes it from every module:\n'+shared.join('\n')+'\n\n':'')+'Stock, history and photos of '+(ids.length>1?'these parts':'this part')+' are deleted too. This cannot be undone.';}
+ if(!confirm(msg))return;
+ const f=document.getElementById('delform');f.querySelectorAll('input[name=ids]').forEach(x=>x.remove());ids.forEach(i=>{const x=document.createElement('input');x.type='hidden';x.name='ids';x.value=i;f.appendChild(x);});
+ const dm=document.getElementById('delmod');if(dm)dm.disabled=(kind!=='remove');f.submit();}
 function newModule(){const n=(prompt('New module (L2) name — e.g. Rain Gauge Module, Wind Sensor Module, Power Supply')||'').trim();if(!n)return;const f=document.getElementById('newmod');f.name.value=n;f.submit();}
 function impPick(inp){const f=inp.form;{% if not cur_mod %}if(document.getElementById('addmod')){const sel=document.getElementById('addmod');const names=[...sel.options].map((o,i)=>(i+1)+'. '+o.text).join('\n');
  const a=prompt('Import this BOM into which module?\n'+names+'\n\nType the number:', String(sel.selectedIndex+1));if(a===null){inp.value='';return;}const i=parseInt(a,10)-1;if(sel.options[i])f.module.value=sel.options[i].value;}{% endif %}f.submit();}

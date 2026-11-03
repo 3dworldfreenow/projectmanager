@@ -702,3 +702,36 @@ def module_delete(mid):
     log_activity("deleted module", m["name"], "/hardware")
     flash(f"Module {m['name']} deleted" + (f" — {len(orphans)} part(s) moved to General" if orphans else ""))
     return redirect(url_for("hardware"))
+
+
+@hw.route("/hardware/delete", methods=["POST"])
+@login_required
+def parts_delete():
+    """Delete parts from the library (any team member) — or, with module=, only take them out of that module."""
+    from app import DELETABLE, UPLOADS, log_activity
+    d = db(); ids = [int(x) for x in (request.form.getlist("ids") or request.form.get("id", "").split(",")) if str(x).strip().isdigit()]
+    rows = [r for r in (d.execute("SELECT * FROM hardware WHERE id=? AND project_id=?", (i, pid())).fetchone() for i in ids) if r]
+    back = request.form.get("next") or url_for("hardware")
+    if not rows: flash("Nothing selected"); return redirect(back)
+    if request.form.get("module"):
+        mid = module_of(request.form["module"]); mname = d.execute("SELECT name FROM modules WHERE id=?", (mid,)).fetchone()["name"]
+        for r in rows:
+            d.execute("DELETE FROM module_parts WHERE module_id=? AND part_id=?", (mid, r["id"]))
+            if not d.execute("SELECT 1 FROM module_parts WHERE part_id=?", (r["id"],)).fetchone():
+                d.execute("UPDATE hardware SET per_board=0, refs='' WHERE id=?", (r["id"],))
+        sync_parts([r["id"] for r in rows]); d.commit()
+        log_activity(f"removed {len(rows)} part(s) from module", mname + ": " + ", ".join(r["name"] for r in rows)[:120], f"/hardware?m={mid}")
+        flash(f"Removed from {mname}: " + ", ".join(r["name"] for r in rows)[:200] + " — still in the parts library")
+        return redirect(back)
+    stmts, _ = DELETABLE["hardware"]
+    for r in rows:
+        for sql, filecol in stmts:
+            if filecol and r[filecol]:
+                try: os.unlink(os.path.join(UPLOADS, r[filecol]))
+                except Exception: pass
+            d.execute(sql, (r["id"], r["id"]) if sql.count("?") == 2 else (r["id"],))
+    d.commit()
+    names = ", ".join(r["name"] + (f" {r['value']}" if r["value"] else "") for r in rows)
+    log_activity(f"deleted {len(rows)} part(s)", names[:150], "/hardware")
+    flash(f"Deleted {len(rows)} part(s): {names[:200]}")
+    return redirect(back if "/hardware/" not in back else url_for("hardware"))

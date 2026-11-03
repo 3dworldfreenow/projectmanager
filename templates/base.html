@@ -278,4 +278,51 @@ document.getElementById('installbtn').onclick=async()=>{if(!deferredPrompt)retur
 })();
 </script>
 {% endif %}
+<style>
+.rfdraft{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:#7a5407;background:#fef7e0;border:1px solid #f6e2a6;border-radius:10px;padding:6px 10px;margin:0 0 10px}
+.rfdraft button{background:transparent;border:0;color:var(--blue);padding:0 4px;min-height:0;font-size:12.5px;cursor:pointer;box-shadow:none}
+.rfsaved{position:fixed;left:50%;transform:translateX(-50%);bottom:84px;background:#1f1f1f;color:#fff;font-size:12.5px;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:998}
+.rfsaved.on{opacity:.88}@media(min-width:861px){.rfsaved{bottom:20px}}
+</style>
+<div class="rfsaved" id="rfsaved">Draft saved</div>
+<script>
+// Toast helper for any page
+window.toast=function(msg,ms){const t=document.createElement('div');t.style.cssText='background:#1c2430;color:#fff;padding:10px 14px;border-radius:12px;font-size:13.5px;box-shadow:0 10px 30px -10px rgba(0,0,0,.5)';t.textContent=msg;(document.getElementById('rftoast')||document.body).appendChild(t);setTimeout(()=>t.remove(),ms||5000);};
+// ---- Drafts, like Gmail: anything typed in a form is kept (in this browser) until it is saved or discarded ----
+(function(){
+ const SKIP=/\/(login|setup|password|logout|admin\/delete)|\/delete$|\/link$/;
+ const ST={get:k=>{try{return JSON.parse(localStorage.getItem(k)||'null');}catch(e){return null;}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}},del:k=>{try{localStorage.removeItem(k);}catch(e){}}};
+ const DAY=864e5, MAXAGE=30*DAY;
+ // clean very old drafts
+ try{for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith('rfdraft:')){const d=ST.get(k);if(!d||Date.now()-d.t>MAXAGE)ST.del(k);}}}catch(e){}
+ function fields(f){return [...f.elements].filter(el=>{if(!el.name&&!el.id)return false;const t=(el.type||'').toLowerCase();
+   if(['password','file','hidden','submit','button','reset','image'].includes(t))return false;if(el.dataset.nodraft!==undefined)return false;return /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);});}
+ const fid=el=>(el.name||'#'+el.id)+(el.type==='radio'?'='+el.value:'');
+ const val=el=>(el.type==='checkbox'||el.type==='radio')?(el.checked?'1':''):el.value;
+ function setv(el,v){if(el.type==='checkbox'||el.type==='radio')el.checked=v==='1';else el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));}
+ let toastT;function saved(){const t=document.getElementById('rfsaved');if(!t)return;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),1200);}
+ const forms=[...document.querySelectorAll('form')].filter(f=>(f.dataset.draft!==undefined||(f.getAttribute('method')||'').toLowerCase()==='post')&&f.dataset.nodraft===undefined&&!SKIP.test(f.getAttribute('action')||location.pathname));
+ forms.forEach((f,i)=>{
+  const els=fields(f);if(!els.length)return;
+  const key='rfdraft:'+location.pathname+location.search+':'+(f.dataset.draft||f.id||((f.getAttribute('action')||'')+'#'+i));
+  const init={};els.forEach(el=>init[fid(el)]=val(el));
+  function save(quiet){const v={};let dirty=false;els.forEach(el=>{const k=fid(el),x=val(el);if(x!==init[k]){v[k]=x;dirty=true;}});
+   if(dirty){ST.set(key,{t:Date.now(),v,init:Object.fromEntries(Object.keys(v).map(k=>[k,init[k]]))});if(!quiet)saved();}else ST.del(key);}
+  let deb;const later=()=>{clearTimeout(deb);deb=setTimeout(()=>save(false),700);};
+  f.addEventListener('input',later);f.addEventListener('change',later);
+  window.addEventListener('pagehide',()=>{clearTimeout(deb);save(true);});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(deb);save(true);}});
+  f.addEventListener('submit',()=>{clearTimeout(deb);ST.del(key);const b=f.querySelector('.rfdraft');if(b)b.remove();});
+  // restore
+  const d=ST.get(key);if(!d||!d.v)return;let n=0;
+  els.forEach(el=>{const k=fid(el);if(k in d.v&&val(el)===(d.init?d.init[k]:init[k])&&val(el)!==d.v[k]){setv(el,d.v[k]);n++;}});  // never overwrite something changed on the server since
+  if(!n){ST.del(key);return;}
+  const bar=document.createElement('div');bar.className='rfdraft';
+  const ago=Math.round((Date.now()-d.t)/60000);bar.innerHTML='<span>📝 Unsaved draft restored · '+(ago<1?'just now':ago<60?ago+' min ago':ago<1440?Math.round(ago/60)+' h ago':Math.round(ago/1440)+' days ago')+'</span>';
+  const x=document.createElement('button');x.type='button';x.textContent='Discard draft';x.onclick=()=>{els.forEach(el=>{const k=fid(el);if(k in init)setv(el,init[k]);});ST.del(key);bar.remove();};bar.appendChild(x);
+  if(f.dataset.draft==='chat'){bar.style.margin='0 0 6px';f.parentNode.insertBefore(bar,f);}else f.insertBefore(bar,f.firstElementChild&&f.firstElementChild.tagName==='INPUT'&&f.firstElementChild.type==='hidden'?f.firstElementChild.nextSibling:f.firstElementChild);
+  f.dispatchEvent(new CustomEvent('draftrestored',{bubbles:true}));
+ });
+})();
+</script>
 </body></html>

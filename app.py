@@ -468,11 +468,19 @@ def _mark_seen(last_id):
                  (session["user"], pid(), last_id))
     db().commit()
 
+_SENT = {}   # (user, client message id) -> (message id, time): stops duplicate sends
+
 @app.route("/chat/send", methods=["POST"])
 @login_required
 def chat_send():
     """Send a text message and/or a file / image / code file."""
     body = request.form.get("body", "").strip()
+    cid = (request.form.get("cid") or "")[:64]
+    if cid:                                   # same message re-sent (double tap / network retry) → don't store it twice
+        import time as _t
+        for k in [k for k, v in _SENT.items() if _t.time() - v[1] > 600]: _SENT.pop(k, None)
+        hit = _SENT.get((session["user"], cid))
+        if hit: return jsonify(ok=True, id=hit[0], duplicate=True)
     fn = orig = None
     f = request.files.get("file")
     if f and f.filename:
@@ -484,6 +492,8 @@ def chat_send():
     cur = db().execute("INSERT INTO messages(project_id,sender,body,ts,filename,orig_name,reply_to,kind) VALUES(?,?,?,?,?,?,?,?)",
                        (pid(), session["user"], body, now(), fn, orig, reply_to, kind))
     db().commit(); _mark_seen(cur.lastrowid)
+    if cid:
+        import time as _t; _SENT[(session["user"], cid)] = (cur.lastrowid, _t.time())
     for u in all_users():
         if f"@{u}" in body and u != session["user"]:
             log_activity("mentioned", f"@{u} in chat: {body[:60]}", "/chat")
