@@ -3,24 +3,35 @@
 {% block body %}
 <a href="{{url_for('hardware')}}">← Parts list</a>
 <div class="row">{% if item.photo %}<img src="{{url_for('uploaded',fn=item.photo)}}" style="width:72px;height:72px;object-fit:cover;border-radius:12px">{% endif %}<h1 style="margin:0">{{item.name}} <span class="tag info">v{{item.version}}</span>{% if item.datasheet %} <a class="btn sec sm" href="{{item.datasheet}}" target="_blank">📄 Datasheet</a>{% endif %}</h1><div style="flex:1"></div>{% if is_admin %}<form method="post" action="/admin/delete/hardware/{{item.id}}" onsubmit="return confirm('Delete this part (and its history and connections)? This cannot be undone.')" style="display:inline"><button class="btn danger sm" title="Delete (admin)">🗑</button></form>{% endif %}</div><br>
+<div class="card" style="margin-top:14px"><div class="row" style="margin-bottom:6px"><h3 style="flex:1">Used in modules <span class="muted" style="font-weight:400;font-size:13px">· L2 → this part (L3)</span></h3><span class="muted"><b>{{item.per_board or 0}}</b> per product · have {{item.qty or 0}}</span></div>
+ <table class="uin"><tr><th>Module</th><th style="width:110px">Qty in module</th><th>Designators</th><th style="width:90px">Per product</th><th></th></tr>
+ {% for l in links %}<tr><td><a href="{{url_for('hardware',m=l.module_id)}}">{{l.name}}</a>{% if (l.per_product or 1)>1 %} <span class="muted">×{{l.per_product}}</span>{% endif %}</td>
+  <td colspan="2"><form method="post" action="{{url_for('hw.module_link',mid=l.module_id)}}" style="display:flex;gap:6px"><input type="hidden" name="part_id" value="{{item.id}}"><input name="qty" type="number" min="0" value="{{l.qty}}" style="width:90px"><input name="refs" value="{{l.refs or ''}}" placeholder="R1,R2" style="flex:1"><button class="sec sm">Save</button></form></td>
+  <td>{{ (l.qty or 0) * (l.per_product or 1) }}</td>
+  <td><form method="post" action="{{url_for('hw.module_link',mid=l.module_id)}}" onsubmit="return confirm('Remove from {{l.name}}?')"><input type="hidden" name="part_id" value="{{item.id}}"><input type="hidden" name="qty" value="0"><button class="sec sm" title="Remove from this module">✕</button></form></td></tr>
+ {% else %}<tr><td colspan="5" class="muted">Not used in any module yet.</td></tr>{% endfor %}
+ </table>
+ {% set used = links|map(attribute='module_id')|list %}{% set free = [] %}{% for m in mods if m.id not in used %}{% if free.append(m) %}{% endif %}{% endfor %}
+ {% if free %}<form method="post" action="" id="addlink" style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap" onsubmit="this.action='/modules/'+this.m.value+'/link'"><input type="hidden" name="part_id" value="{{item.id}}">
+  <select name="m" style="width:auto">{% for m in free %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select><input name="qty" type="number" min="1" value="1" style="width:80px"><input name="refs" placeholder="Designators (optional)" style="width:180px"><button class="sm">+ Also use in this module</button></form>{% endif %}
+</div>
+<style>.uin{width:100%}.uin td,.uin th{padding:6px 6px;vertical-align:middle}.uin input{padding:6px 10px}</style>
 <form class="card" method="post" enctype="multipart/form-data" style="margin-top:14px">
   <div class="grid g4">
     <div><label>Name</label><input name="name" value="{{item.name}}" required></div>
-    <div><label>Part no.</label><input name="part_no" value="{{item.part_no}}"></div>
+    <div><label>Part no.</label><input name="part_no" value="{{item.part_no or ''}}"></div>
     <div><label>In stock (have)</label><input name="qty" type="number" value="{{item.qty}}"></div>
     <div><label>Unit cost</label><input name="cost" type="number" step="0.01" value="{{item.cost}}"></div>
-    <div><label>Supplier</label><input name="supplier" value="{{item.supplier}}"></div>
+    <div><label>Supplier</label><input name="supplier" value="{{item.supplier or ''}}"></div>
     <div><label>Status</label><select name="status">{% for s in ['planned','ordered','received','tested','installed','replaced'] %}<option {% if s==item.status %}selected{% endif %}>{{s}}</option>{% endfor %}</select></div>
     <div><label>Category</label><select name="category">{% for c in HW_CATEGORIES %}<option {% if c==item.category %}selected{% endif %}>{{c}}</option>{% endfor %}</select></div>
     <div><label>Value / spec</label><input name="value" value="{{item.value or ''}}"></div>
     <div><label>Package / footprint</label><input name="package" value="{{item.package or ''}}"></div>
-    <div><label>Designators</label><input name="refs" value="{{item.refs or ''}}"></div>
-    <div><label>Qty per board</label><input name="per_board" type="number" min="1" value="{{item.per_board or 1}}"></div>
     <div><label>Min. qty (low-stock alert)</label><input name="min_qty" type="number" value="{{item.min_qty or 0}}"></div>
     <div><label>Datasheet link</label><input name="datasheet" value="{{item.datasheet or ''}}"></div>
     <div><label>LCSC code {% if item.lcsc %}(<a href="https://www.lcsc.com/product-detail/{{item.lcsc}}.html" target="_blank" rel="noopener">open</a>){% endif %}</label><input name="lcsc" value="{{item.lcsc or ''}}" placeholder="C14663"></div>
     <div><label>Part photo {% if item.photo %}(<a href="{{url_for('uploaded',fn=item.photo)}}" target="_blank">current</a>){% endif %}</label><input type="file" name="photo" accept="image/*"></div>
-  </div><label>Notes</label><input name="notes" value="{{item.notes}}"><br><br><button>Save (creates v{{item.version+1}})</button>
+  </div><label>Notes</label><input name="notes" value="{{item.notes or ''}}"><br><br><button>Save (creates v{{item.version+1}})</button>
 </form>
 <h2>Version history</h2>
 <div class="card tight"><table><tr><th>Ver</th><th>Snapshot</th><th>By</th><th>When</th></tr>

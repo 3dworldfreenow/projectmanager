@@ -19,6 +19,12 @@ CREATE TABLE IF NOT EXISTS design_versions(
   note TEXT, by TEXT, ts TEXT);
 CREATE TABLE IF NOT EXISTS design_pins(
   id INTEGER PRIMARY KEY, version_id INTEGER, x REAL, y REAL, label TEXT, hardware_id INTEGER, note TEXT);
+CREATE TABLE IF NOT EXISTS modules(
+  id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, per_product INTEGER DEFAULT 1, notes TEXT,
+  design_id INTEGER, position INTEGER DEFAULT 0, ts TEXT);
+CREATE TABLE IF NOT EXISTS module_parts(
+  id INTEGER PRIMARY KEY, module_id INTEGER, part_id INTEGER, qty INTEGER DEFAULT 1, refs TEXT,
+  UNIQUE(module_id, part_id));
 CREATE TABLE IF NOT EXISTS connections(
   id INTEGER PRIMARY KEY, project_id INTEGER, from_part INTEGER, from_pin TEXT, to_part INTEGER, to_pin TEXT,
   color TEXT, note TEXT, position INTEGER DEFAULT 0);
@@ -59,6 +65,13 @@ def init_hw(con):
         except Exception: pass
     try: con.execute("ALTER TABLE projects ADD COLUMN boards INTEGER DEFAULT 1")
     except Exception: pass
+    # L1 product → L2 modules → L3 parts: put every existing part into a "General" module once
+    if not con.execute("SELECT 1 FROM meta WHERE key='modules_v1'").fetchone():
+        for (p,) in con.execute("SELECT DISTINCT project_id FROM hardware").fetchall():
+            cur = con.execute("INSERT INTO modules(project_id,name,per_product,position,ts) VALUES(?,?,1,0,?)", (p, "General", now()))
+            for h in con.execute("SELECT id, per_board, refs FROM hardware WHERE project_id=?", (p,)).fetchall():
+                con.execute("INSERT OR IGNORE INTO module_parts(module_id,part_id,qty,refs) VALUES(?,?,?,?)", (cur.lastrowid, h[0], h[1] or 1, h[2] or ""))
+        con.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('modules_v1','1')")
     con.commit()
 
 def is_img(fn):
@@ -115,7 +128,12 @@ def design(did):
                      "WHERE p.version_id=? ORDER BY p.id", (cur["id"],)).fetchall() if cur else []
     parts = d.execute("SELECT id,name,refs,value FROM hardware WHERE project_id=? ORDER BY category,name", (pid(),)).fetchall()
     specs = json.loads(des["specs"] or "{}")
-    ibom_parts = d.execute("SELECT id,name,value,refs,package FROM hardware WHERE project_id=? AND IFNULL(refs,'')!='' ORDER BY category,name", (pid(),)).fetchall()
+    bm = d.execute("SELECT id FROM modules WHERE design_id=? AND project_id=?", (did, pid())).fetchone()
+    if bm:
+        ibom_parts = d.execute("SELECT h.id,h.name,h.value,mp.refs,h.package FROM module_parts mp JOIN hardware h ON h.id=mp.part_id "
+                               "WHERE mp.module_id=? AND IFNULL(mp.refs,'')!='' ORDER BY h.category,h.name", (bm["id"],)).fetchall()
+    else:
+        ibom_parts = d.execute("SELECT id,name,value,refs,package FROM hardware WHERE project_id=? AND IFNULL(refs,'')!='' AND refs NOT LIKE '%: %' ORDER BY category,name", (pid(),)).fetchall()
     return render_template("design.html", des=des, versions=versions, cur=cur, pins=pins, parts=parts, specs=specs,
                            is_ibom=bool(cur) and is_ibom(cur["filename"]), ibom_parts=ibom_parts, ref=request.args.get("ref", ""),
                            is_img=is_img(cur["filename"]) if cur else False,
@@ -252,7 +270,10 @@ def part_quick(hid):
     d = db(); r = d.execute("SELECT * FROM hardware WHERE id=?", (hid,)).fetchone() or abort(404)
     if "delta" in j:
         d.execute("UPDATE hardware SET qty=MAX(0, COALESCE(qty,0)+?) WHERE id=?", (int(j["delta"]), hid))
+    if j.get("module") and "per_board" in j:
+        link_part(module_of(j["module"]), hid, int(j["per_board"] or 1), (d.execute("SELECT refs FROM module_parts WHERE module_id=? AND part_id=?", (module_of(j["module"]), hid)).fetchone() or {"refs": ""})["refs"])
     for k in ("status", "per_board", "cost", "qty"):
+        if k == "per_board" and j.get("module"): continue
         if k in j and j[k] != "":
             d.execute(f"UPDATE hardware SET {k}=? WHERE id=?", (j[k], hid))
     # "Have it" with nothing counted yet → assume we have what the build needs
@@ -413,27 +434,28 @@ def parse_bom(raw, filename):
         parts.append(e)
     return sorted(parts, key=lambda e: _ref_sort(e["refs"].split(",")[0]) if e["refs"] else ("~", 0))
 
-def import_bom(raw, filename, user):
-    """Insert parsed parts; if a part with the same name+value+package (or LCSC code) exists, update its refs/qty instead."""
-    d = db(); added = updated = 0
+def import_bom(raw, filename, user, module_id=None):
+    """Import into one module. Parts already in the library (same LCSC code or name+value+package) are re-used
+    — that is how one resistor is shared by many modules. Re-importing a module's board updates its counts and
+    designators and drops PCB parts that are no longer on that board."""
+    d = db(); added = shared = 0; module_id = module_id or general_module(); seen = set()
     for e in parse_bom(raw, filename):
-        ex = None
-        if e["lcsc"]:
-            ex = d.execute("SELECT id FROM hardware WHERE project_id=? AND UPPER(IFNULL(lcsc,''))=?", (pid(), e["lcsc"])).fetchone()
-        if not ex:
-            ex = d.execute("SELECT id FROM hardware WHERE project_id=? AND LOWER(name)=? AND LOWER(IFNULL(value,''))=? AND LOWER(IFNULL(package,''))=?",
-                           (pid(), e["name"].lower(), e["value"].lower(), e["package"].lower())).fetchone()
+        ex = find_same(e["name"], e["value"], e["package"], e["lcsc"])
         if ex:
-            d.execute("UPDATE hardware SET refs=?, per_board=?, lcsc=COALESCE(NULLIF(?,''),lcsc), part_no=COALESCE(NULLIF(?,''),part_no), "
-                      "datasheet=COALESCE(NULLIF(?,''),datasheet), updated_by=?, ts=? WHERE id=?",
-                      (e["refs"], e["per_board"], e["lcsc"], e["part_no"], e["datasheet"], user, now(), ex["id"])); updated += 1
+            d.execute("UPDATE hardware SET lcsc=COALESCE(NULLIF(lcsc,''),NULLIF(?,'')), part_no=COALESCE(NULLIF(part_no,''),NULLIF(?,'')), "
+                      "datasheet=COALESCE(NULLIF(datasheet,''),NULLIF(?,'')), updated_by=?, ts=? WHERE id=?",
+                      (e["lcsc"], e["part_no"], e["datasheet"], user, now(), ex)); pid_ = ex; shared += 1
         else:
-            d.execute("INSERT INTO hardware(project_id,name,category,value,package,refs,per_board,qty,cost,supplier,part_no,lcsc,datasheet,notes,status,updated_by,ts) "
-                      "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                      (pid(), e["name"], e["category"], e["value"], e["package"], e["refs"], e["per_board"] or 1, 0, e["cost"], e["supplier"],
-                       e["part_no"], e["lcsc"], e["datasheet"], e["maker"], "planned", user, now())); added += 1
-    d.commit()
-    return added, updated
+            pid_ = d.execute("INSERT INTO hardware(project_id,name,category,value,package,refs,per_board,qty,cost,supplier,part_no,lcsc,datasheet,notes,status,updated_by,ts) "
+                             "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             (pid(), e["name"], e["category"], e["value"], e["package"], e["refs"], e["per_board"] or 1, 0, e["cost"], e["supplier"],
+                              e["part_no"], e["lcsc"], e["datasheet"], e["maker"], "planned", user, now())).lastrowid; added += 1
+        link_part(module_id, pid_, e["per_board"] or 1, e["refs"]); seen.add(pid_)
+    gone = [r["part_id"] for r in d.execute("SELECT part_id FROM module_parts WHERE module_id=? AND IFNULL(refs,'')!=''", (module_id,)) if r["part_id"] not in seen]
+    for g in gone:
+        d.execute("DELETE FROM module_parts WHERE module_id=? AND part_id=?", (module_id, g))
+    sync_parts(gone); d.commit()
+    return added, shared, len(gone)
 
 
 # ======================================================================= LCSC ==
@@ -504,11 +526,16 @@ def lcsc_refresh():
 def export_jlc():
     """BOM in the format JLCPCB asks for when ordering assembled boards."""
     import csv, io
-    rows = db().execute("SELECT * FROM hardware WHERE project_id=? AND IFNULL(refs,'')!='' ORDER BY category, name", (pid(),)).fetchall()
+    d = db(); mid = request.args.get("m")
+    mods = [module_of(mid)] if mid else [m["id"] for m in modules_list()]
     buf = io.StringIO(); w = csv.writer(buf); w.writerow(["Comment", "Designator", "Footprint", "LCSC Part #"])
-    for r in rows:
-        w.writerow([r["value"] or r["name"], r["refs"], r["package"] or "", r["lcsc"] or ""])
-    return Response(buf.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=BOM_JLCPCB.csv"})
+    name = "all"
+    for m in mods:
+        mm = d.execute("SELECT name FROM modules WHERE id=?", (m,)).fetchone(); name = mm["name"] if mid else name
+        for r in d.execute("SELECT h.*, mp.refs AS mrefs FROM module_parts mp JOIN hardware h ON h.id=mp.part_id WHERE mp.module_id=? AND IFNULL(mp.refs,'')!='' ORDER BY h.category, h.name", (m,)):
+            w.writerow([r["value"] or r["name"], r["mrefs"], r["package"] or "", r["lcsc"] or ""])
+    from werkzeug.utils import secure_filename
+    return Response(buf.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment; filename=BOM_JLCPCB_{secure_filename(name)}.csv"})
 
 
 # ================================================================ iBOM viewer ==
@@ -534,3 +561,144 @@ def ibom(vid):
     resp.headers["Content-Security-Policy"] = "sandbox allow-scripts allow-popups; default-src 'self' 'unsafe-inline' data: blob:"
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
+
+
+
+# ================================================================== modules ==
+# L1 = the project (product), L2 = modules / sub-assemblies, L3 = parts (one shared library).
+# module_parts links a part to every module that uses it, with the qty + designators on that module.
+# hardware.per_board / hardware.refs are kept as a cache = total per product, so stock, shopping list
+# and cost keep working everywhere.
+
+def modules_list(project=None):
+    d = db(); p = project or pid()
+    return d.execute("""SELECT m.*, COUNT(mp.id) AS nparts, COALESCE(SUM(mp.qty * COALESCE(h.cost,0)),0) AS cost
+        FROM modules m LEFT JOIN module_parts mp ON mp.module_id=m.id LEFT JOIN hardware h ON h.id=mp.part_id
+        WHERE m.project_id=? GROUP BY m.id ORDER BY m.position, m.id""", (p,)).fetchall()
+
+def general_module(project=None):
+    d = db(); p = project or pid()
+    r = d.execute("SELECT id FROM modules WHERE project_id=? ORDER BY (name='General') DESC, position, id LIMIT 1", (p,)).fetchone()
+    if r: return r["id"]
+    return d.execute("INSERT INTO modules(project_id,name,per_product,position,ts) VALUES(?,?,1,0,?)", (p, "General", now())).lastrowid
+
+def module_of(mid):
+    """Module id from a form value, only if it belongs to this project; otherwise the default module."""
+    try: mid = int(mid)
+    except (TypeError, ValueError): return general_module()
+    r = db().execute("SELECT id FROM modules WHERE id=? AND project_id=?", (mid, pid())).fetchone()
+    return r["id"] if r else general_module()
+
+def find_same(name, value="", package="", lcsc=""):
+    """An existing library part that is the same thing (same LCSC code, or same name + value + package)."""
+    d = db()
+    if lcsc:
+        r = d.execute("SELECT id FROM hardware WHERE project_id=? AND UPPER(IFNULL(lcsc,''))=?", (pid(), lcsc.upper())).fetchone()
+        if r: return r["id"]
+    r = d.execute("SELECT id FROM hardware WHERE project_id=? AND LOWER(TRIM(name))=? AND LOWER(TRIM(IFNULL(value,'')))=? AND LOWER(TRIM(IFNULL(package,'')))=?",
+                  (pid(), (name or "").strip().lower(), (value or "").strip().lower(), (package or "").strip().lower())).fetchone()
+    return r["id"] if r else None
+
+def link_part(module_id, part_id, qty=1, refs="", add=False):
+    d = db(); qty = max(0, int(qty or 0))
+    ex = d.execute("SELECT * FROM module_parts WHERE module_id=? AND part_id=?", (module_id, part_id)).fetchone()
+    if ex:
+        if add:
+            allr = [r for r in (ex["refs"] or "").split(",") + (refs or "").split(",") if r.strip()]
+            d.execute("UPDATE module_parts SET qty=qty+?, refs=? WHERE id=?", (qty, ",".join(dict.fromkeys(allr)), ex["id"]))
+        else:
+            d.execute("UPDATE module_parts SET qty=?, refs=? WHERE id=?", (qty, refs or "", ex["id"]))
+    else:
+        d.execute("INSERT INTO module_parts(module_id,part_id,qty,refs) VALUES(?,?,?,?)", (module_id, part_id, qty or 1, refs or ""))
+    sync_parts([part_id])
+
+def sync_parts(ids=None):
+    """Recompute hardware.per_board (= qty per product across all modules) and hardware.refs from module links."""
+    d = db()
+    if ids is None:
+        ids = [r["id"] for r in d.execute("SELECT id FROM hardware WHERE project_id=?", (pid(),))]
+    for i in ids:
+        rows = d.execute("SELECT mp.qty, mp.refs, m.per_product, m.name FROM module_parts mp JOIN modules m ON m.id=mp.module_id WHERE mp.part_id=? ORDER BY m.position, m.id", (i,)).fetchall()
+        if not rows: continue                                   # not in any module: leave as it was (spare / library only)
+        total = sum((r["qty"] or 0) * (r["per_product"] or 1) for r in rows)
+        refs = [r["refs"] for r in rows if r["refs"]]
+        d.execute("UPDATE hardware SET per_board=?, refs=? WHERE id=?", (total, (" · ".join(f"{r['name']}: {r['refs']}" for r in rows if r["refs"]) if len(refs) > 1 else (refs[0] if refs else "")), i))
+
+def used_in(project=None):
+    """{part_id: [(module_id, module_name, qty, refs)]}"""
+    out = {}
+    for r in db().execute("SELECT mp.part_id, m.id, m.name, mp.qty, mp.refs FROM module_parts mp JOIN modules m ON m.id=mp.module_id "
+                          "WHERE m.project_id=? ORDER BY m.position, m.id", (project or pid(),)):
+        out.setdefault(r["part_id"], []).append((r["id"], r["name"], r["qty"], r["refs"] or ""))
+    return out
+
+@hw.route("/modules", methods=["POST"])
+@login_required
+def module_new():
+    from app import log_activity
+    name = (request.form.get("name") or "").strip()
+    if not name: flash("Give the module a name"); return redirect(url_for("hardware"))
+    d = db(); pos = (d.execute("SELECT MAX(position) FROM modules WHERE project_id=?", (pid(),)).fetchone()[0] or 0) + 1
+    mid = d.execute("INSERT INTO modules(project_id,name,per_product,notes,position,ts) VALUES(?,?,?,?,?,?)",
+                    (pid(), name, max(1, int(request.form.get("per_product") or 1)), request.form.get("notes", ""), pos, now())).lastrowid
+    d.commit(); log_activity("added module", name, f"/hardware?m={mid}")
+    return redirect(url_for("hardware", m=mid))
+
+@hw.route("/modules/<int:mid>", methods=["POST"])
+@login_required
+def module_update(mid):
+    d = db(); m = d.execute("SELECT * FROM modules WHERE id=? AND project_id=?", (mid, pid())).fetchone() or abort(404)
+    f = request.form
+    d.execute("UPDATE modules SET name=?, per_product=?, notes=?, design_id=? WHERE id=?",
+              ((f.get("name") or m["name"]).strip(), max(1, int(f.get("per_product") or m["per_product"] or 1)), f.get("notes", m["notes"] or ""),
+               int(f["design_id"]) if f.get("design_id") else None, mid))
+    sync_parts([r["part_id"] for r in d.execute("SELECT part_id FROM module_parts WHERE module_id=?", (mid,))]); d.commit()
+    flash("Module saved"); return redirect(url_for("hardware", m=mid))
+
+@hw.route("/modules/<int:mid>/link", methods=["POST"])
+@login_required
+def module_link(mid):
+    """Add a library part to a module, or change its qty/designators there (qty 0 = remove from this module)."""
+    d = db(); m = d.execute("SELECT * FROM modules WHERE id=? AND project_id=?", (mid, pid())).fetchone() or abort(404)
+    j = request.get_json(silent=True) or request.form
+    part = int(j["part_id"]); qty = int(j.get("qty") or 0)
+    d.execute("SELECT 1 FROM hardware WHERE id=? AND project_id=?", (part, pid())).fetchone() or abort(404)
+    if "delta" in j:
+        ex = d.execute("SELECT qty FROM module_parts WHERE module_id=? AND part_id=?", (mid, part)).fetchone()
+        qty = max(0, (ex["qty"] if ex else 0) + int(j["delta"]))
+    if qty <= 0 and not j.get("refs"):
+        d.execute("DELETE FROM module_parts WHERE module_id=? AND part_id=?", (mid, part)); sync_parts([part])
+        left = d.execute("SELECT COUNT(*) FROM module_parts WHERE part_id=?", (part,)).fetchone()[0]
+        if not left: d.execute("UPDATE hardware SET per_board=0, refs='' WHERE id=?", (part,))
+    else:
+        refs = j.get("refs")
+        if refs is None:
+            ex = d.execute("SELECT refs FROM module_parts WHERE module_id=? AND part_id=?", (mid, part)).fetchone()
+            refs = ex["refs"] if ex else ""
+        link_part(mid, part, qty or 1, refs)
+    d.commit()
+    h = d.execute("SELECT per_board, qty FROM hardware WHERE id=?", (part,)).fetchone()
+    if request.is_json:
+        return jsonify(ok=True, module_qty=qty, per_product=h["per_board"], have=h["qty"])
+    return redirect(request.referrer or url_for("hardware", m=mid))
+
+@hw.route("/modules/<int:mid>/delete", methods=["POST"])
+@login_required
+def module_delete(mid):
+    """Delete a module. Parts are never lost: a part used nowhere else moves to General."""
+    from app import log_activity
+    d = db(); m = d.execute("SELECT * FROM modules WHERE id=? AND project_id=?", (mid, pid())).fetchone() or abort(404)
+    links = d.execute("SELECT * FROM module_parts WHERE module_id=?", (mid,)).fetchall()
+    if links and not session.get("is_admin"):
+        flash("Only an admin can delete a module that still has parts"); return redirect(url_for("hardware", m=mid))
+    d.execute("DELETE FROM module_parts WHERE module_id=?", (mid,)); d.execute("DELETE FROM modules WHERE id=?", (mid,))
+    orphans = [l for l in links if not d.execute("SELECT 1 FROM module_parts WHERE part_id=?", (l["part_id"],)).fetchone()]
+    if orphans:
+        g = d.execute("SELECT id FROM modules WHERE project_id=? AND name='General'", (pid(),)).fetchone()
+        g = g["id"] if g else d.execute("INSERT INTO modules(project_id,name,per_product,position,ts) VALUES(?,?,1,0,?)", (pid(), "General", now())).lastrowid
+        for l in orphans:
+            d.execute("INSERT OR IGNORE INTO module_parts(module_id,part_id,qty,refs) VALUES(?,?,?,?)", (g, l["part_id"], l["qty"], l["refs"]))
+    sync_parts([l["part_id"] for l in links]); d.commit()
+    log_activity("deleted module", m["name"], "/hardware")
+    flash(f"Module {m['name']} deleted" + (f" — {len(orphans)} part(s) moved to General" if orphans else ""))
+    return redirect(url_for("hardware"))

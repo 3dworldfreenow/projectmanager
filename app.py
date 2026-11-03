@@ -911,29 +911,37 @@ def hardware():
         if "boards" in f:                                   # number of boards to build
             d.execute("UPDATE projects SET boards=? WHERE id=?", (max(1, int(f["boards"] or 1)), pid())); d.commit()
             return redirect(url_for("hardware"))
+        from hw import module_of, find_same, link_part
+        mod = module_of(f.get("module"))
         if f.get("quick"):                                  # quick-add lines
             from hw import parse_quick
-            n = 0
+            n = sh = 0
             for line in f["quick"].splitlines():
                 if not line.strip(): continue
                 q = parse_quick(line)
-                d.execute("INSERT INTO hardware(project_id,name,category,value,package,refs,per_board,qty,status,updated_by,ts) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                          (pid(), q["name"], q["category"], q["value"], q["package"], q["refs"], q["per_board"], 0, "planned", session["user"], now())); n += 1
-            log_activity("added parts", f"{n} via quick-add", "/hardware"); d.commit(); flash(f"{n} parts added")
-            return redirect(url_for("hardware"))
+                ex = find_same(q["name"], q["value"], q["package"])
+                if ex: sh += 1
+                else:
+                    ex = d.execute("INSERT INTO hardware(project_id,name,category,value,package,refs,per_board,qty,status,updated_by,ts) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                                   (pid(), q["name"], q["category"], q["value"], q["package"], q["refs"], q["per_board"], 0, "planned", session["user"], now())).lastrowid
+                link_part(mod, ex, q["per_board"], q["refs"], add=True); n += 1
+            log_activity("added parts", f"{n} via quick-add", f"/hardware?m={mod}"); d.commit()
+            flash(f"{n} parts added" + (f" ({sh} already in the library — shared, not duplicated)" if sh else ""))
+            return redirect(url_for("hardware", m=mod))
         if request.files.get("csv") and request.files["csv"].filename:   # BOM file import: KiCad / EasyEDA / JLCPCB / any CSV or Excel
             from hw import import_bom
             up = request.files["csv"]
             try:
-                added, updated = import_bom(up.read(), up.filename, session["user"])
+                added, updated, gone = import_bom(up.read(), up.filename, session["user"], mod)
             except Exception as ex:
                 flash(f"Could not read that file ({ex}). Export the BOM as CSV and try again."); return redirect(url_for("hardware"))
             if not added and not updated:
                 flash("No parts found — the file needs a header row with columns like Reference/Designator, Value/Comment, Footprint.")
             else:
-                log_activity("imported BOM", f"{up.filename}: {added} new, {updated} updated", "/hardware")
-                flash(f"Imported {up.filename}: {added} new part(s), {updated} updated")
-            return redirect(url_for("hardware"))
+                mname = d.execute("SELECT name FROM modules WHERE id=?", (mod,)).fetchone()["name"]
+                log_activity("imported BOM", f"{up.filename} → {mname}: {added} new, {updated} shared", f"/hardware?m={mod}")
+                flash(f"Imported {up.filename} into {mname}: {added} new part(s), {updated} already in the library (shared)" + (f", {gone} no longer on this board removed from {mname}" if gone else ""))
+            return redirect(url_for("hardware", m=mod))
         vals = [f.get(k, "") or (0 if k in ("qty", "min_qty") else 1 if k == "per_board" else "") for k in HW_FIELDS]
         if not f.get("category"):                         # simple form: guess category from the name
             from hw import guess_category
@@ -945,19 +953,42 @@ def hardware():
         photo = None
         up = request.files.get("photo")
         if up and up.filename: photo, _ = save_upload(up)
-        d.execute(f"INSERT INTO hardware(project_id,{','.join(HW_FIELDS)},photo,updated_by,ts) "
-                  f"VALUES(?,{','.join('?'*len(HW_FIELDS))},?,?,?)", (pid(), *vals, photo, session["user"], now()))
-        log_activity("added hardware", f["name"], "/hardware"); d.commit()
-        if f.get("simple"): flash(f"Added: {f['name']}")
-        return redirect(url_for("hardware") + ("#add" if f.get("simple") else ""))
-    rows = d.execute("SELECT * FROM hardware WHERE project_id=? ORDER BY category, name", (pid(),)).fetchall()
+        mname = d.execute("SELECT name FROM modules WHERE id=?", (mod,)).fetchone()["name"]
+        ex = find_same(f.get("name", ""), f.get("value", ""), f.get("package", ""), f.get("lcsc", ""))
+        if ex:                                             # same part already in the library → share it, don't duplicate
+            link_part(mod, ex, int(f.get("per_board") or 1), f.get("refs", ""), add=True)
+            log_activity("added part to module", f"{f['name']} → {mname}", f"/hardware/{ex}"); d.commit()
+            flash(f"{f['name']} {f.get('value','')} is already in the parts library — now also used in {mname}")
+        else:
+            hid = d.execute(f"INSERT INTO hardware(project_id,{','.join(HW_FIELDS)},photo,updated_by,ts) "
+                            f"VALUES(?,{','.join('?'*len(HW_FIELDS))},?,?,?)", (pid(), *vals, photo, session["user"], now())).lastrowid
+            link_part(mod, hid, int(f.get("per_board") or 1), f.get("refs", ""))
+            log_activity("added hardware", f"{f['name']} → {mname}", f"/hardware/{hid}"); d.commit()
+            if f.get("simple"): flash(f"Added to {mname}: {f['name']}")
+        return redirect(url_for("hardware", m=mod) + ("#add" if f.get("simple") else ""))
+    from hw import modules_list, used_in, general_module
+    mods = modules_list()
+    if not mods and d.execute("SELECT 1 FROM hardware WHERE project_id=? LIMIT 1", (pid(),)).fetchone() is None:
+        general_module(); d.commit(); mods = modules_list()
+    cur_mod = None
+    if request.args.get("m"):
+        cur_mod = next((m for m in mods if str(m["id"]) == request.args["m"]), None)
+    all_rows = d.execute("SELECT * FROM hardware WHERE project_id=? ORDER BY category, name", (pid(),)).fetchall()
+    if cur_mod:
+        rows = d.execute("SELECT h.*, mp.qty AS mod_qty, mp.refs AS mod_refs FROM module_parts mp JOIN hardware h ON h.id=mp.part_id "
+                         "WHERE mp.module_id=? ORDER BY h.category, h.name", (cur_mod["id"],)).fetchall()
+    else:
+        rows = all_rows
+    uses = used_in()
+    designs_list = d.execute("SELECT id,title FROM designs WHERE project_id=? ORDER BY id DESC", (pid(),)).fetchall()
     boards = (d.execute("SELECT boards FROM projects WHERE id=?", (pid(),)).fetchone() or {"boards": 1})["boards"] or 1
     groups = {}
     for r in rows: groups.setdefault(r["category"] or "Other", []).append(r)
-    per_board_cost = sum((r["cost"] or 0) * (r["per_board"] or 1) for r in rows)
-    need = {r["id"]: (r["per_board"] or 1) * boards for r in rows}
-    short = [r for r in rows if (r["qty"] or 0) < need[r["id"]]]
-    low = [r for r in rows if (r["min_qty"] or 0) > 0 and (r["qty"] or 0) <= (r["min_qty"] or 0)]
+    per_board_cost = sum((r["cost"] or 0) * (r["per_board"] if r["per_board"] is not None else 1) for r in all_rows)
+    need = {r["id"]: (r["per_board"] if r["per_board"] is not None else 1) * boards for r in all_rows}
+    short = [r for r in all_rows if (r["qty"] or 0) < need[r["id"]]]
+    low = [r for r in all_rows if (r["min_qty"] or 0) > 0 and (r["qty"] or 0) <= (r["min_qty"] or 0)]
+    product = d.execute("SELECT name FROM projects WHERE id=?", (pid(),)).fetchone()["name"]
     designs_using = {}
     try:
         for x in d.execute("SELECT DISTINCT p.hardware_id, ds.id, ds.title FROM design_pins p JOIN design_versions v ON v.id=p.version_id JOIN designs ds ON ds.id=v.design_id WHERE p.hardware_id IS NOT NULL"):
@@ -969,7 +1000,9 @@ def hardware():
         ib = d.execute("SELECT v.design_id, v.id FROM design_versions v JOIN designs ds ON ds.id=v.design_id WHERE ds.project_id=? AND "
                        "(LOWER(v.filename) LIKE '%.html' OR LOWER(v.filename) LIKE '%.htm') ORDER BY v.id DESC LIMIT 1", (pid(),)).fetchone()
     except Exception: pass
+    if cur_mod and cur_mod["design_id"]: ib = {"design_id": cur_mod["design_id"]}
     return render_template("hardware.html", custom_vals=custom_values(), ibom_design=ib["design_id"] if ib else None,
+                           mods=mods, cur_mod=cur_mod, uses=uses, product=product, designs_list=designs_list, all_count=len(all_rows), all_rows_lib=all_rows,
                            has_lcsc=any(r["lcsc"] for r in rows), items=rows, bom_groups=groups, boards=boards, per_board_cost=per_board_cost,
                            total=per_board_cost * boards, need=need, short=short, low=low, designs_using=designs_using)
 
@@ -978,7 +1011,7 @@ def hardware():
 def hardware_export():
     """BOM export to Excel (falls back to CSV if openpyxl is missing)."""
     rows = db().execute("SELECT * FROM hardware WHERE project_id=? ORDER BY id", (pid(),)).fetchall()
-    cols = ["category", "refs", "name", "value", "package", "part_no", "lcsc", "per_board", "qty", "cost", "supplier", "status", "datasheet", "notes"]
+    cols = ["category", "refs", "name", "value", "package", "part_no", "lcsc", "per_board", "qty", "cost", "supplier", "status", "datasheet", "notes"]   # per_board = qty per product (all modules)
     pname = db().execute("SELECT name FROM projects WHERE id=?", (pid(),)).fetchone()["name"]
     try:
         from openpyxl import Workbook
@@ -990,6 +1023,18 @@ def hardware_export():
             ws.append([r[c] for c in cols] + [(r["cost"] or 0) * (r["per_board"] or 1)])
         ws.append([]); ws.append(["TOTAL"] + [""] * (len(cols) - 1) + [f"=SUM(O2:O{len(rows)+1})"])
         for col, w in zip("ABCDEFGHIJKLMNO", (22, 12, 28, 16, 10, 16, 10, 8, 6, 10, 16, 12, 28, 28, 12)): ws.column_dimensions[col].width = w
+        st = wb.create_sheet("Structure")
+        st.append(["Level", "Product / Module / Part", "Value", "Package", "Designators", "LCSC", "Qty", "Unit cost", "Line total"])
+        for c in st[1]: c.font = Font(bold=True)
+        st.append(["L1", pname])
+        st["A2"].font = st["B2"].font = Font(bold=True, size=12)
+        from hw import modules_list
+        for m in modules_list():
+            st.append(["L2", f"{m['name']}" + (f"  (×{m['per_product']} per product)" if (m["per_product"] or 1) > 1 else ""), "", "", "", "", m["per_product"], "", round(m["cost"] or 0, 2)])
+            st.cell(st.max_row, 1).font = st.cell(st.max_row, 2).font = Font(bold=True)
+            for r in db().execute("SELECT h.*, mp.qty AS mq, mp.refs AS mr FROM module_parts mp JOIN hardware h ON h.id=mp.part_id WHERE mp.module_id=? ORDER BY h.category, h.name", (m["id"],)):
+                st.append(["L3", "    " + r["name"], r["value"], r["package"], r["mr"], r["lcsc"], r["mq"], r["cost"] or 0, (r["cost"] or 0) * (r["mq"] or 0)])
+        for col, w in zip("ABCDEFGHI", (7, 36, 16, 12, 22, 10, 6, 10, 11)): st.column_dimensions[col].width = w
         path = os.path.join(UPLOADS, f"BOM_{secure_filename(pname)}.xlsx"); wb.save(path)
         return send_from_directory(UPLOADS, os.path.basename(path), as_attachment=True)
     except ImportError:
@@ -1010,8 +1055,9 @@ def hardware_item(hid):
         snap = " | ".join(f"{k}={item[k]}" for k in HW_FIELDS)
         d.execute("INSERT INTO hardware_history(hardware_id,version,snapshot,changed_by,ts) VALUES(?,?,?,?,?)",
                   (hid, item["version"], snap, item["updated_by"], item["ts"]))
-        vals = [request.form.get(k, "") or (0 if k in ("qty","min_qty") else "") for k in HW_FIELDS]
-        d.execute(f"UPDATE hardware SET {','.join(k+'=?' for k in HW_FIELDS)},version=version+1,updated_by=?,ts=? WHERE id=?",
+        ef = [k for k in HW_FIELDS if k not in ("per_board", "refs") or k in request.form]   # per-module qty/refs are edited in "Used in"
+        vals = [request.form.get(k, "") or (0 if k in ("qty","min_qty") else "") for k in ef]
+        d.execute(f"UPDATE hardware SET {','.join(k+'=?' for k in ef)},version=version+1,updated_by=?,ts=? WHERE id=?",
                   (*vals, session["user"], now(), hid))
         f = request.files.get("photo")
         if f and f.filename:
@@ -1020,7 +1066,9 @@ def hardware_item(hid):
         d.commit(); return redirect(url_for("hardware_item", hid=hid))
     history = d.execute("SELECT * FROM hardware_history WHERE hardware_id=? ORDER BY version DESC", (hid,)).fetchall()
     tests = d.execute("SELECT * FROM tests WHERE hardware_id=? ORDER BY id DESC", (hid,)).fetchall()
-    return render_template("hardware_item.html", item=item, history=history, tests=tests)
+    from hw import modules_list
+    links = d.execute("SELECT mp.*, m.name, m.per_product FROM module_parts mp JOIN modules m ON m.id=mp.module_id WHERE mp.part_id=? ORDER BY m.position, m.id", (hid,)).fetchall()
+    return render_template("hardware_item.html", item=item, history=history, tests=tests, links=links, mods=modules_list(item["project_id"]))
 
 # ----------------------------------------------------------------- tests ----
 @app.route("/tests", methods=["GET", "POST"])
@@ -1261,7 +1309,8 @@ DELETABLE = {
     "documents":  ([("DELETE FROM documents WHERE id=?", "filename")], None),
     "hardware":   ([("DELETE FROM hardware_history WHERE hardware_id=?", None), ("DELETE FROM test_files WHERE test_id IN (SELECT id FROM tests WHERE hardware_id=?)", None),
                     ("UPDATE tests SET hardware_id=NULL WHERE hardware_id=?", None), ("UPDATE design_pins SET hardware_id=NULL WHERE hardware_id=?", None),
-                    ("DELETE FROM connections WHERE from_part=? OR to_part=?", None), ("DELETE FROM hardware WHERE id=?", "photo")], None),
+                    ("DELETE FROM connections WHERE from_part=? OR to_part=?", None), ("DELETE FROM module_parts WHERE part_id=?", None),
+                    ("DELETE FROM hardware WHERE id=?", "photo")], None),
     "tests":      ([("DELETE FROM test_files WHERE test_id=?", None), ("DELETE FROM tests WHERE id=?", None)], None),
     "firmware":   ([("UPDATE tests SET firmware_id=NULL WHERE firmware_id=?", None), ("UPDATE tasks SET firmware_id=NULL WHERE firmware_id=?", None), ("DELETE FROM firmware WHERE id=?", "filename")], None),
     "milestones": ([("UPDATE tasks SET milestone_id=NULL WHERE milestone_id=?", None), ("DELETE FROM milestones WHERE id=?", None)], None),

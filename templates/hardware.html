@@ -36,17 +36,58 @@ table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;bor
 .qa textarea{font-family:ui-monospace,Menlo,monospace;font-size:13px;min-height:84px}
 .tabs2{display:flex;gap:6px;margin-bottom:8px}.tabs2 button{background:var(--surface2);color:var(--ink2);border:0}.tabs2 button.on{background:var(--blue-soft);color:#001d35}
 .pane{display:none}.pane.on{display:block}
+.l1{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 10px}.l1 .lv{font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--muted);background:var(--surface2);border-radius:5px;padding:2px 6px}
+.mtabs{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;margin-bottom:4px;scrollbar-width:none}.mtabs::-webkit-scrollbar{display:none}
+.mtabs a,.mtabs button{flex-shrink:0;display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;background:var(--surface);border:1px solid var(--line2);color:var(--ink2);font-size:13.5px;text-decoration:none;min-height:0;font-weight:500}
+.mtabs a .c{font-size:11.5px;color:var(--muted);font-weight:400}.mtabs a.on{background:var(--blue-soft);border-color:transparent;color:#001d35}.mtabs a.on .c{color:#001d35}
+.mtabs button{border-style:dashed;color:var(--blue);background:transparent}
+.mbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:12px 14px}
+.mbar h3{margin:0;font-size:17px}.mbar .lv{font-size:10.5px;font-weight:700;color:var(--muted);background:var(--surface2);border-radius:5px;padding:2px 6px}
+.mbar details summary{list-style:none;cursor:pointer}.mbar details summary::-webkit-details-marker{display:none}
+.mset{display:grid;grid-template-columns:1fr 110px 1fr auto;gap:8px;align-items:end;margin-top:10px;width:100%}
+.mcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:12px}
+.mcard{padding:12px 14px;text-decoration:none;color:var(--ink);display:block}.mcard:hover{box-shadow:0 1px 3px rgba(60,64,67,.25)}
+.mcard .n{font-weight:600}.mcard .s{font-size:12.5px;color:var(--muted);margin-top:2px}.mcard .p{font-size:18px;font-weight:600;margin-top:6px}
+.uses{display:flex;gap:4px;flex-wrap:wrap;margin-top:3px}.uses a{font-size:11.5px;background:#eef3fd;color:#1a4fa0;border-radius:6px;padding:1px 7px;text-decoration:none}
+.shared{font-size:10.5px;font-weight:600;color:#7a4f00;background:#fff3d6;border-radius:5px;padding:1px 6px;margin-left:4px}
+.uselib{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line2)}.uselib select{flex:1;min-width:200px}
+@media(max-width:860px){.mset{grid-template-columns:1fr 1fr}}
 @media(max-width:860px){.part{grid-template-columns:40px 1fr;gap:10px}.part .right{grid-column:2;text-align:left;margin-top:-4px}}
 </style>{% endblock %}
 {% block body %}
-<div class="ph"><div><h1>Parts list (BOM)</h1><div class="sub">{{items|length}} parts · every component of the product, grouped by type</div></div>
-<div class="actions"><span class="range" id="vtoggle" style="display:inline-flex;background:var(--surface2);border-radius:999px;padding:3px"><button type="button" data-v="simple" style="background:transparent;color:var(--ink2);padding:5px 14px;min-height:0;border:0;font-size:13px">Simple</button><button type="button" data-v="full" style="background:transparent;color:var(--ink2);padding:5px 14px;min-height:0;border:0;font-size:13px">Detailed</button></span><a class="btn sec" href="{{url_for('hw.designs')}}">Designs</a><a class="btn sec" href="{{url_for('hw.connections')}}">Connections</a><form method="post" enctype="multipart/form-data" id="impform" style="display:inline"><label class="btn sec" style="margin:0;cursor:pointer">⬆ Import BOM file<input type="file" name="csv" accept=".csv,.tsv,.txt,.xlsx,text/csv" style="display:none" onchange="this.form.submit()"></label></form>
+<div class="ph"><div><h1>Parts list (BOM)</h1><div class="sub">{{all_count}} parts in the library · {{mods|length}} module{{'s' if mods|length!=1}} · one part can be used in many modules</div></div>
+<div class="actions"><span class="range" id="vtoggle" style="display:inline-flex;background:var(--surface2);border-radius:999px;padding:3px"><button type="button" data-v="simple" style="background:transparent;color:var(--ink2);padding:5px 14px;min-height:0;border:0;font-size:13px">Simple</button><button type="button" data-v="full" style="background:transparent;color:var(--ink2);padding:5px 14px;min-height:0;border:0;font-size:13px">Detailed</button></span><a class="btn sec" href="{{url_for('hw.designs')}}">Designs</a><a class="btn sec" href="{{url_for('hw.connections')}}">Connections</a><form method="post" enctype="multipart/form-data" id="impform" style="display:inline" onsubmit="return true"><input type="hidden" name="module" class="modsync" value="{{cur_mod.id if cur_mod else (mods[0].id if mods else '')}}"><label class="btn sec" style="margin:0;cursor:pointer">⬆ Import BOM file<input type="file" name="csv" accept=".csv,.tsv,.txt,.xlsx,text/csv" style="display:none" onchange="impPick(this)"></label></form>
 {% if has_lcsc %}<form method="post" action="{{url_for('hw.lcsc_refresh')}}" style="display:inline" onsubmit="this.querySelector('button').textContent='Updating…'"><button class="btn sec" title="Fetch latest LCSC price for every part with an LCSC code">↻ LCSC prices</button></form>{% endif %}
-<details class="xmenu"><summary class="btn sec">Export ▾</summary><div><a href="{{url_for('hardware_export')}}">📊 Excel (full BOM)</a><a href="{{url_for('hw.export_jlc')}}">🏭 JLCPCB assembly BOM (CSV)</a></div></details></div></div>
+<details class="xmenu"><summary class="btn sec">Export ▾</summary><div><a href="{{url_for('hardware_export')}}">📊 Excel (full BOM + L1/L2/L3 structure)</a>{% if cur_mod %}<a href="{{url_for('hw.export_jlc',m=cur_mod.id)}}">🏭 JLCPCB BOM — {{cur_mod.name}}</a>{% endif %}<a href="{{url_for('hw.export_jlc')}}">🏭 JLCPCB BOM — all modules</a></div></details></div></div>
+
+<div class="l1"><span class="lv">L1</span><b>{{product}}</b><span class="muted">· ₹{{'%.0f'|format(per_board_cost)}} per product · building {{boards}}</span></div>
+<div class="mtabs"><a href="{{url_for('hardware')}}" class="{{ 'on' if not cur_mod }}">All parts <span class="c">{{all_count}}</span></a>
+{% for m in mods %}<a href="{{url_for('hardware',m=m.id)}}" class="{{ 'on' if cur_mod and cur_mod.id==m.id }}">{{m.name}}{% if (m.per_product or 1)>1 %} ×{{m.per_product}}{% endif %} <span class="c">{{m.nparts}}</span></a>{% endfor %}
+<button type="button" onclick="newModule()">+ Module</button></div>
+<form method="post" action="{{url_for('hw.module_new')}}" id="newmod" style="display:none"><input name="name"></form>
+
+{% if cur_mod %}
+<div class="card mbar"><span class="lv">L2</span><h3>{{cur_mod.name}}</h3><span class="muted">{{cur_mod.nparts}} parts · ₹{{'%.0f'|format(cur_mod.cost)}} per module{% if (cur_mod.per_product or 1)>1 %} · ×{{cur_mod.per_product}} in each {{product}}{% endif %}</span>
+ <div style="flex:1"></div>
+ {% if cur_mod.design_id %}<a class="btn sec sm" href="{{url_for('hw.design',did=cur_mod.design_id)}}">🟩 Board</a>{% endif %}
+ <details style="width:100%"><summary class="btn sec sm" style="display:inline-flex">⚙ Module settings</summary>
+  <form method="post" action="{{url_for('hw.module_update',mid=cur_mod.id)}}" class="mset">
+   <div><label>Name</label><input name="name" value="{{cur_mod.name}}"></div>
+   <div><label>How many per product</label><input name="per_product" type="number" min="1" value="{{cur_mod.per_product or 1}}"></div>
+   <div><label>Board design (for 📍 and the clickable board)</label><select name="design_id"><option value="">— none —</option>{% for ds in designs_list %}<option value="{{ds.id}}" {{'selected' if cur_mod.design_id==ds.id}}>{{ds.title}}</option>{% endfor %}</select></div>
+   <div style="display:flex;gap:6px"><button>Save</button></div>
+  </form>
+  <form method="post" action="{{url_for('hw.module_delete',mid=cur_mod.id)}}" onsubmit="return confirm('Delete module {{cur_mod.name}}? Parts stay in the library; parts used nowhere else move to General.')" style="margin-top:8px"><button class="sec sm" style="color:var(--red)">Delete module</button></form>
+ </details>
+</div>
+{% else %}
+{% if mods %}<div class="mcards">{% for m in mods %}<a class="card mcard" href="{{url_for('hardware',m=m.id)}}"><div class="n"><span class="muted" style="font-size:11px;font-weight:700">L2</span> {{m.name}}{% if (m.per_product or 1)>1 %} ×{{m.per_product}}{% endif %}</div><div class="s">{{m.nparts}} parts</div><div class="p">₹{{'%.0f'|format(m.cost * (m.per_product or 1))}}</div></a>{% endfor %}</div>{% endif %}
+{% endif %}
 
 <div class="vsimple">
 <form method="post" class="card addbox" id="add" autocomplete="off"><input type="hidden" name="simple" value="1">
-  <div class="row" style="margin-bottom:8px"><h3 style="flex:1">Add a part</h3><span class="muted hide-m">just the name is enough — fill the rest later</span></div>
+  {% if cur_mod %}<input type="hidden" name="module" value="{{cur_mod.id}}">{% endif %}
+  <div class="row" style="margin-bottom:8px"><h3 style="flex:1">Add a part {% if cur_mod %}to <span style="color:var(--blue)">{{cur_mod.name}}</span>{% else %}to <select name="module" id="addmod" class="modpick" style="width:auto;display:inline-block;padding:4px 28px 4px 10px;font-size:15px">{% for m in mods %}<option value="{{m.id}}">{{m.name}}</option>{% endfor %}</select>{% endif %}</h3><span class="muted hide-m">just the name is enough — fill the rest later</span></div>
   <div class="addrow">
     <div class="f-name"><label>Part name</label><input name="name" id="pname" required placeholder="e.g. Resistor, ESP32, Rain gauge" list="commonparts"></div>
     <div class="f-val"><label>Size / value</label><input name="value" id="pval" placeholder="10k · 100nF · 2 m" list="valuelist"><datalist id="valuelist"></datalist></div>
@@ -65,20 +106,25 @@ table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;bor
   <div id="lcscinfo"></div>
   <datalist id="vendors">{% for v in items|map(attribute='supplier')|select|unique %}<option value="{{v}}">{% endfor %}</datalist>
   <datalist id="commonparts">{% for c in COMMON_PARTS %}<option value="{{c}}">{% endfor %}</datalist>
+  {% if cur_mod %}{% set inmod = items|map(attribute='id')|list %}{% set lib = [] %}
+  {% for h in all_rows_lib if h.id not in inmod %}{% if lib.append(h) %}{% endif %}{% endfor %}
+  {% if lib %}<div class="uselib"><div style="flex:1;min-width:200px"><label>…or use a part already in the library <span class="muted" style="font-weight:400">— shared, so stock and price stay in one place</span></label><select id="libpart">{% for h in lib %}<option value="{{h.id}}">{{h.name}}{% if h.value %} · {{h.value}}{% endif %}{% if h.package %} · {{h.package}}{% endif %}{% if uses.get(h.id) %} — in {{ uses[h.id]|map(attribute=1)|join(', ') }}{% endif %}</option>{% endfor %}</select></div>
+   <div style="width:110px"><label>How many</label><input id="libqty" type="number" min="1" value="1"></div><div style="width:150px"><label>Designators</label><input id="librefs" placeholder="R1,R2"></div><button type="button" class="sec" onclick="useLib()">Use in {{cur_mod.name}}</button></div>{% endif %}{% endif %}
   <div class="chips">{% for c in COMMON_PARTS[:14] %}<button type="button" class="chip2" onclick="pick('{{c}}')">{{c}}</button>{% endfor %}</div>
 </form>
 
-<div class="card tight"><table class="simple"><tr><th>Part</th><th>Size / value</th><th>Per board</th><th>In hand</th><th>Price</th><th>Status</th>{% if is_admin %}<th></th>{% endif %}</tr>
-{% for h in items %}<tr data-id="{{h.id}}"><td><a href="{{url_for('hardware_item',hid=h.id)}}" style="color:var(--ink);font-weight:500">{{h.name}}</a>{% if h.refs %} <span class="muted" style="font-family:ui-monospace,monospace;font-size:12px">{{h.refs}}</span>{% endif %}{% if h.datasheet %} <a href="{{h.datasheet}}" target="_blank">📄</a>{% endif %}{% if h.lcsc %} <a class="lc" href="https://www.lcsc.com/product-detail/{{h.lcsc}}.html" target="_blank" rel="noopener">{{h.lcsc}}</a>{% endif %}{% if ibom_design and h.refs %} <a class="onb" href="{{url_for('hw.design',did=ibom_design,ref=h.refs.split(',')[0])}}" title="Show on the board">📍</a>{% endif %}
+<div class="card tight"><table class="simple"><tr><th>Part</th><th>Size / value</th><th>{{ 'In this module' if cur_mod else 'Per product' }}</th><th>In hand</th><th>Price</th><th>Status</th>{% if is_admin %}<th></th>{% endif %}</tr>
+{% for h in items %}{% set hrefs = (h.mod_refs if cur_mod else h.refs) or '' %}{% set u = uses.get(h.id, []) %}<tr data-id="{{h.id}}"><td><a href="{{url_for('hardware_item',hid=h.id)}}" style="color:var(--ink);font-weight:500">{{h.name}}</a>{% if u|length > 1 %}<span class="shared" title="Used in {{ u|map(attribute=1)|join(', ') }}">shared ×{{u|length}}</span>{% endif %}{% if hrefs and (cur_mod or u|length < 2) %} <span class="muted" style="font-family:ui-monospace,monospace;font-size:12px">{{hrefs}}</span>{% endif %}{% if h.datasheet %} <a href="{{h.datasheet}}" target="_blank">📄</a>{% endif %}{% if h.lcsc %} <a class="lc" href="https://www.lcsc.com/product-detail/{{h.lcsc}}.html" target="_blank" rel="noopener">{{h.lcsc}}</a>{% endif %}{% if ibom_design and hrefs and ':' not in hrefs %} <a class="onb" href="{{url_for('hw.design',did=ibom_design,ref=hrefs.split(',')[0])}}" title="Show on the board">📍</a>{% endif %}
+{% if not cur_mod and u %}<div class="uses">{% for mid,mn,mq,mr in u %}<a href="{{url_for('hardware',m=mid)}}" title="{{mr}}">{{mn}} ×{{mq}}</a>{% endfor %}</div>{% endif %}
 {% if h.supplier or h.notes %}<div class="vend">{% if h.supplier %}{% if h.supplier.startswith('http') %}<a href="{{h.supplier}}" target="_blank" rel="noopener">🛒 {{ h.supplier.split('/')[2].replace('www.','') }}</a>{% else %}<span>🏪 {{h.supplier}}</span>{% endif %}{% endif %}{% if h.notes %}<span class="nt">📝 {{h.notes}}</span>{% endif %}</div>{% endif %}</td>
 <td>{{h.value or ''}}{% if h.package %} <span class="muted">{{h.package}}</span>{% endif %}</td>
-<td>{{h.per_board or 1}}</td>
+<td>{% if cur_mod %}<div class="stepper sm"><button type="button" onclick="madj({{h.id}},-1)">−</button><span class="q" id="m{{h.id}}">{{h.mod_qty}}</span><button type="button" onclick="madj({{h.id}},1)">+</button></div>{% if (h.per_board or 0) != h.mod_qty %}<div class="muted" style="font-size:11.5px;margin-top:2px">{{h.per_board}} per product</div>{% endif %}{% else %}{{h.per_board if h.per_board is not none else 1}}{% endif %}</td>
 <td><div class="stepper sm"><button type="button" onclick="adj({{h.id}},-1)">−</button><span class="q {{ 'short' if (h.qty or 0) < need[h.id] }}" id="q{{h.id}}" data-need="{{need[h.id]}}">{{h.qty or 0}}</span><button type="button" onclick="adj({{h.id}},1)">+</button></div></td>
 <td>₹{{'%g'|format(h.cost or 0)}}</td>
 <td><select class="st" onchange="setst({{h.id}},this.value)">{% for v,l in [('planned','Need to buy'),('ordered','Ordered'),('received','Have it'),('tested','Tested'),('installed','Installed')] %}<option value="{{v}}" {% if h.status==v %}selected{% endif %}>{{l}}</option>{% endfor %}{% if h.status not in ('planned','ordered','received','tested','installed') %}<option selected>{{h.status}}</option>{% endif %}</select></td>
 {% if is_admin %}<td><form method="post" action="/admin/delete/hardware/{{h.id}}" onsubmit="return confirm('Delete {{h.name}}?')"><button class="sec sm" style="padding:2px 9px;min-height:0" title="Delete">✕</button></form></td>{% endif %}</tr>
 {% else %}<tr><td colspan="7"><div class="empty"><b>No parts yet</b>Type a part name above and press Add.</div></td></tr>{% endfor %}</table></div>
-<div class="row" style="margin-top:4px"><span class="muted">{{items|length}} parts · ₹{{'%.0f'|format(per_board_cost)}} per board · building {{boards}} · {{short|length}} still to buy</span><div style="flex:1"></div><button type="button" class="sec sm" onclick="setView('full')">More options (bulk add, import, shopping list)</button></div>
+<div class="row" style="margin-top:4px"><span class="muted">{{items|length}} parts · ₹{{'%.0f'|format(per_board_cost)}} per product · building {{boards}} · {{short|length}} still to buy</span><div style="flex:1"></div><button type="button" class="sec sm" onclick="setView('full')">More options (bulk add, import, shopping list)</button></div>
 </div>
 <div class="vfull">
 <div class="sum">
@@ -90,10 +136,10 @@ table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;bor
 
 <div class="card">
   <div class="tabs2"><button type="button" class="on" onclick="tab(0)">Quick add</button><button type="button" onclick="tab(1)">Add one part (full)</button><button type="button" onclick="tab(2)">Import CSV</button></div>
-  <form method="post" class="pane on qa"><label>One part per line — type / value / package / how many per board / designators</label>
+  <form method="post" class="pane on qa"><input type="hidden" name="module" class="modsync" value="{{cur_mod.id if cur_mod else (mods[0].id if mods else '')}}"><label>One part per line — type / value / package / how many per board / designators</label>
     <textarea name="quick" placeholder="R 10k 0603 x3 R1,R4,R7&#10;C 100nF 50V 0805 x2 C1,C2&#10;D 1N4007 TH x1 D1&#10;J JST-XH 2pin x4 J1,J2,J3,J4&#10;ESP32 DevKit v1 x1 U1&#10;BME280 module x1&#10;W 22AWG red silicone 2m"></textarea>
     <div class="row" style="margin-top:8px"><button>Add parts</button><span class="muted">R = resistor, C = capacitor, L = inductor, D = diode, LED, Q = transistor, U = IC/module, J = connector, W = wire. Anything else is taken as the part name.</span></div></form>
-  <form method="post" enctype="multipart/form-data" class="pane">
+  <form method="post" enctype="multipart/form-data" class="pane"><input type="hidden" name="module" class="modsync" value="{{cur_mod.id if cur_mod else (mods[0].id if mods else '')}}">
     <div class="grid g4">
       <div><label>Name</label><input name="name" required placeholder="Resistor 10 kΩ"></div>
       <div><label>Category</label><select name="category">{% for c in HW_CATEGORIES %}<option>{{c}}</option>{% endfor %}</select></div>
@@ -110,7 +156,7 @@ table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;bor
       <div><label>Datasheet link</label><input name="datasheet" placeholder="https://…"></div>
       <div><label>Photo</label><input type="file" name="photo" accept="image/*"></div>
     </div><label>Notes</label><input name="notes"><br><br><button>Add part</button></form>
-  <form method="post" enctype="multipart/form-data" class="pane"><label>BOM file — straight from <b>KiCad</b> (Tools → Generate BOM, or Fabrication outputs → BOM), <b>EasyEDA</b> (Export → BOM), a <b>JLCPCB</b> BOM, or any CSV / Excel with columns like Reference, Value, Footprint, Qty, LCSC.</label><input type="file" name="csv" accept=".csv,.tsv,.txt,.xlsx,text/csv"><div class="muted" style="font-size:12.5px;margin-top:6px">Rows are grouped (R1, R4, R7 → one line ×3). Importing again after a board change updates the designators and counts of parts already in the list instead of adding duplicates.</div><br><br><button>Import</button></form>
+  <form method="post" enctype="multipart/form-data" class="pane"><input type="hidden" name="module" class="modsync" value="{{cur_mod.id if cur_mod else (mods[0].id if mods else '')}}"><label>BOM file — straight from <b>KiCad</b> (Tools → Generate BOM, or Fabrication outputs → BOM), <b>EasyEDA</b> (Export → BOM), a <b>JLCPCB</b> BOM, or any CSV / Excel with columns like Reference, Value, Footprint, Qty, LCSC.</label><input type="file" name="csv" accept=".csv,.tsv,.txt,.xlsx,text/csv"><div class="muted" style="font-size:12.5px;margin-top:6px">Rows are grouped (R1, R4, R7 → one line ×3). Importing again after a board change updates the designators and counts of parts already in the list instead of adding duplicates.</div><br><br><button>Import</button></form>
 </div>
 
 {% if short %}<details class="flash"><summary style="cursor:pointer">🛒 <b>{{short|length}} parts still to buy</b> for {{boards}} board{{'s' if boards>1}} — tap to see the shopping list</summary>
@@ -122,7 +168,7 @@ table.simple select.st{width:auto;padding:4px 26px 4px 10px;font-size:12.5px;bor
   <div class="part">{% if h.photo %}<img src="{{url_for('uploaded',fn=h.photo)}}">{% else %}<span class="ph">{{ CAT_ICON.get(cat,'🔧') }}</span>{% endif %}
     <div><div class="nm"><a href="{{url_for('hardware_item',hid=h.id)}}">{{h.name}}</a>{% if h.refs %}<span class="refs">{{h.refs}}</span>{% endif %}{% if h.datasheet %} <a href="{{h.datasheet}}" target="_blank" title="datasheet">📄</a>{% endif %}</div>
       <div class="meta">{% if h.value %}<b>{{h.value}}</b> · {% endif %}{% if h.package %}{{h.package}} · {% endif %}{% if h.part_no %}{{h.part_no}} · {% endif %}{% if h.supplier %}{{h.supplier}} · {% endif %}<span class="tag {{ 'ok' if h.status in ('tested','installed','received') else 'warn' if h.status=='ordered' else '' }}" style="padding:0 7px">{{h.status}}</span>{% if designs_using.get(h.id) %} · on {% for did,t in designs_using[h.id] %}<a href="{{url_for('hw.design',did=did)}}">{{t}}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}</div></div>
-    <div class="right"><div><b>{{h.per_board or 1}}</b> / board · ₹{{'%g'|format(h.cost or 0)}}</div><div class="need {{ 'short' if (h.qty or 0) < need[h.id] }}">need {{need[h.id]}} · have {{h.qty or 0}}</div></div>
+    <div class="right"><div><b>{{h.per_board if h.per_board is not none else 1}}</b> / product · ₹{{'%g'|format(h.cost or 0)}}</div><div class="need {{ 'short' if (h.qty or 0) < need[h.id] }}">need {{need[h.id]}} · have {{h.qty or 0}}</div></div>
   </div>{% endfor %}</div></div>
 {% endfor %}
 {% for cat, rows in bom_groups.items() if cat not in HW_CATEGORIES %}<div class="cat"><h3>{{cat}}</h3><div class="card tight">{% for h in rows %}<div class="part"><span class="ph">🔧</span><div class="nm"><a href="{{url_for('hardware_item',hid=h.id)}}">{{h.name}}</a></div><div class="right">need {{need[h.id]}} · have {{h.qty or 0}}</div></div>{% endfor %}</div></div>{% endfor %}
@@ -165,6 +211,7 @@ async function lcscLook(){const c=document.getElementById('lcsc').value.trim().t
  box.className='on';box.innerHTML='';const b=document.createElement('b');b.textContent=j.name;box.append(b,` · ${j.maker} · ${j.package} · ₹${j.price_inr} each ($${j.price_usd}) · ${j.stock.toLocaleString()} in stock `);
  const a=document.createElement('a');a.href=j.url;a.target='_blank';a.rel='noopener';a.textContent='LCSC page';box.append(a);
  if(j.ladder&&j.ladder.length>1){const s=document.createElement('div');s.className='muted';s.textContent='Bulk: '+j.ladder.map(x=>x.qty+'+ ₹'+x.inr).join(' · ');box.append(s);}}
+document.getElementById('addmod')&&document.getElementById('addmod').addEventListener('change',e=>document.querySelectorAll('.modsync').forEach(x=>x.value=e.target.value));
 document.getElementById('lcsc')&&document.getElementById('lcsc').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();lcscLook();}});
 const CUSTOM={{ custom_vals|tojson }};
 function presetFor(name){const n=(name||'').toLowerCase().trim();const base=presetBase(n);const c=CUSTOM[n]||{saved:[],used:[]};
@@ -194,6 +241,13 @@ document.getElementById('pname').addEventListener('change',e=>showValues(e.targe
 document.getElementById('pname').addEventListener('input',e=>{const pr=presetFor(e.target.value);if(pr&&!pr.onlyAdd)showValues(e.target.value,false);else document.getElementById('vchips').classList.remove('on');});
 document.getElementById('pname').addEventListener('blur',e=>{if(e.target.value.trim())showValues(e.target.value,false);});
 function step(b,d){const i=b.parentElement.querySelector('input');i.value=Math.max(1,(+i.value||1)+d);}
+(function(){const a=document.querySelector('.mtabs a.on');if(a&&a.scrollIntoView)a.scrollIntoView({block:'nearest',inline:'center'});})();
+function newModule(){const n=(prompt('New module (L2) name — e.g. Rain Gauge Module, Wind Sensor Module, Power Supply')||'').trim();if(!n)return;const f=document.getElementById('newmod');f.name.value=n;f.submit();}
+function impPick(inp){const f=inp.form;{% if not cur_mod %}if(document.getElementById('addmod')){const sel=document.getElementById('addmod');const names=[...sel.options].map((o,i)=>(i+1)+'. '+o.text).join('\n');
+ const a=prompt('Import this BOM into which module?\n'+names+'\n\nType the number:', String(sel.selectedIndex+1));if(a===null){inp.value='';return;}const i=parseInt(a,10)-1;if(sel.options[i])f.module.value=sel.options[i].value;}{% endif %}f.submit();}
+{% if cur_mod %}async function madj(id,d){const r=await (await fetch('{{url_for('hw.module_link',mid=cur_mod.id)}}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({part_id:id,delta:d})})).json();
+ if(r.module_qty<=0){location.reload();return;}document.getElementById('m'+id).textContent=r.module_qty;const q=document.getElementById('q'+id);if(q){q.dataset.need=r.per_product*{{boards}};q.classList.toggle('short',+q.textContent<+q.dataset.need);}}
+async function useLib(){const p=document.getElementById('libpart').value;await fetch('{{url_for('hw.module_link',mid=cur_mod.id)}}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({part_id:+p,qty:+document.getElementById('libqty').value||1,refs:document.getElementById('librefs').value.trim()})});location.reload();}{% endif %}
 async function adj(id,d){const r=await (await fetch('/hardware/'+id+'/quick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delta:d})})).json();const q=document.getElementById('q'+id);q.textContent=r.qty;q.classList.toggle('short',r.qty<+q.dataset.need);}
 async function setst(id,v){const r=await (await fetch('/hardware/'+id+'/quick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:v})})).json();const q=document.getElementById('q'+id);q.textContent=r.qty;q.classList.toggle('short',r.qty<+q.dataset.need);}
 if(location.hash==='#add')setTimeout(()=>document.getElementById('pname').focus(),100);
